@@ -1,6 +1,9 @@
 ###########################################################################
 ## This module provides tools for interacting  with the spectrometer at 
 ## the UC Berkeley Leuschner Radio Observatory. 
+
+## Darby McCauley
+
 ## ROUGH DRAFT
 ###########################################################################
 
