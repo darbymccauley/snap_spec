@@ -4,7 +4,6 @@
 
 ## Darby McCauley
 
-## ROUGH DRAFT
 ###########################################################################
 
 import casperfpga
@@ -40,11 +39,11 @@ class Spectrometer(object):
         #self.mode = 
         #self.count =
         #self.scale =
-        #self.boffile =
+        #self.fpgfile =
         #self.nchan = 
         #self.downsample = 
         #self.fft_shift = 
-        # self.acc_len = 
+        #self.acc_len = 
 
     def check_if_connected():
     """
@@ -121,25 +120,39 @@ class Spectrometer(object):
 
         return fits.PrimaryHDU(header=header)
 
-    # CONFUSED ABOUT HOW TO WRITE THIS FUNCTION -- RACHEL'S init_spec()
-    def initialize_spec(self, scale=False, force_restart=False):
+    # CONFUSED ABOUT THIS FUNCTION -- RACHEL'S init_spec()
+    def initialize_spec(self, scale=False):
     """
-    Starts the bof process on the SNAP. First checks to see if the
-    spectrometer is already running, then initializes it if it isn't.
+    Starts the fpg process on the SNAP and initializes the spectrometer.
 
     Inputs:
     - scale: Whether or not to scale down each integration by the total
     number of spectra per integration time.
-    - force_restart: Restart the bof process even if it is already
+    - force_restart: Restart the fpg process even if it is already
     running.
     """
-    
-        # Check if the spectrometer is running
-        if self.fpga.is_running() == True:
-            print('Spectrometer is running.')
-        elif self.fpga.is_running() == False:
-            print('Starting the spectrometer...')
+        print('Starting the spectrometer...')
+        
+        self.fpga.upload_to_ram_and_program(self.fpgfile)
+        self.fpga.write_int('fft_shift', self.fft_shift)
 
+        self.fpga.write_int('corr_0_acc_len') = _____
+        self.fpga.write_int('corr_1_acc_len') = _____
+        
+        # Sync pulse lets the spectrometer know when to start.
+        for i in (0,1,0):
+            self.fpga.write_int('arm', i)
+
+        self.count = self.fpga.read_int('corr_0_acc_cnt')
+        self.count = self.fpga.read_int('corr_1_acc_cnt')
+
+        print('Spectrometer is ready.')
+
+
+    
+    def poll(self):
+        
+    
     
     
 
