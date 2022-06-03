@@ -39,6 +39,7 @@ def fits_header(nspec, coords, coord_sys='ga'):
     if coord_sys != 'ga' and coord_sys != 'eq':
         raise ValueError('Invalid coordinate system supplied: ' + coord_sys)
 
+
     # Set times
     obs_start_unix_time = time.time() # unix time
     unix_time = Time(obs_start_unix_time, format='unix', location=(LON, LAT, ALT)) # unix time class
@@ -59,6 +60,13 @@ def fits_header(nspec, coords, coord_sys='ga'):
 
     # Create header and write observation attributes into it
     header = fits.Header()
+    # FPGA = 250MHz
+    # ADC = 500MHz 
+    # BW = 250MHz
+    # N channels = 8192
+    # Res = 250e6/8192 = 30.517kHz
+    # FFT shift (rough)
+    # acclen =? inttime (rough)
     header['NSPEC'] = (nspec, 'Number of spectra collected')
     header['L'] = (l.value, 'Galactic longitude [deg]')
     header['B'] = (b.value, 'Galactic latitude [deg]')
