@@ -19,6 +19,11 @@ ALT, LAT, LON = 304.0, 37.9183, -122.1067
 # Develop FITs file header as primary HDU
 def fits_header(nspec, coords, coord_sys='ga'):
     """
+    Creates the primary HDU (header) of the data collection FITS
+    file. Writes in observation attributes such as time of 
+    observation, number of spectra collected, and the coordinates
+    of the observation target.
+
     Inputs:
     - nspec: Number of spectra to collect.
     - coords: Coordinate of the target.
@@ -27,15 +32,15 @@ def fits_header(nspec, coords, coord_sys='ga'):
         Default is galactic coordinates. Can use galactic ('ga') 
         or equatorial ('eq') coordinate systems.
     Returns:
-    - Fits file header information containing the attributes
+    - FITS file primary HDU information containing the attributes
     of the observation.
     """
-    # Ensure that a coordinate system has been supplied
+    # Ensure that a proper coordinate system has been supplied
     if coord_sys != 'ga' and coord_sys != 'eq':
         raise ValueError('Invalid coordinate system supplied: ' + coord_sys)
 
     # Set times
-    obs_start_unix_time = time.time() # Unix time
+    obs_start_unix_time = time.time() # unix time
     unix_time = Time(obs_start_unix_time, format='unix', location=(LON, LAT, ALT)) # unix time class
     obs_start_jd = unix_time.jd # convert unix time to julian date
 
