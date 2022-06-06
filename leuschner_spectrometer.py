@@ -331,10 +331,10 @@ class Spectrometer(object):
     Inputs:
     - fft_shift: FFT shifting instructions for the SNAP.
     """
-    self.fft_shift = int(fft_shift)
-    self.fpga.write_int('fft_shift', self.fft_shift)
-    for i in range(2):
-        self.poll()
+        self.fft_shift = int(fft_shift)
+        self.fpga.write_int('fft_shift', self.fft_shift)
+        for i in range(2):
+            self.poll()
 
 
     def set_scale(self, scale):
@@ -346,10 +346,10 @@ class Spectrometer(object):
     - scale: Whether or not to downscale the spectra.
     """
 
-    self.scale = int(scale)
-    self.fpga.write_int('scale', self.scale)
-    for i in range(2):
-        self.poll()
+        self.scale = int(scale)
+        self.fpga.write_int('scale', self.scale)
+        for i in range(2):
+            self.poll()
 
 
 
