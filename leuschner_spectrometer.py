@@ -163,16 +163,14 @@ class Spectrometer(object):
     Inputs:
     - scale: Whether or not to scale down each integration by the 
     total number of spectra per integration time.
-    - force_restart: Restart the fpg process even if it is already
-    running.
     """
         print('Starting the spectrometer...')
         
         self.fpga.upload_to_ram_and_program(self.fpgfile)
         self.fpga.write_int('fft_shift', self.fft_shift)
 
-        self.fpga.write_int('corr_0_acc_len') = _____
-        self.fpga.write_int('corr_1_acc_len') = _____
+        self.fpga.write_int('corr_0_acc_len', _____)
+        self.fpga.write_int('corr_1_acc_len', _____)
         
         # Sync pulse lets the spectrometer know when to start.
         for i in (0,1,0):
