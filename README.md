@@ -1,6 +1,6 @@
 # Leuschner_Spectrometer
 
-FPGA designs and control code for the UC Berkeley Leuschner Radio Observatory.
+Control code for the UC Berkeley Leuschner Radio Observatory spectrometer.
 
 Updates from previous spectromenter:
   - Upgrading control code from Python 2 to Python 3
