@@ -40,19 +40,33 @@ class Spectrometer(object):
         self.fpga = casperfpga.CasperFpga(hostname)
         self.hostname = hostname
         
-        self.fpgfile = '' 
-        self.mode = 
-        self.clock_rate = 250e6
+        self.fpgfile = '' # grab latest design
+#         self.mode = 
+        self.count0 = 0
+        self.count1 = 0
+        self.scale = 0
         self.adc_rate = 500e6
-        self.downsample = 
-        self.samp_rate = 
+        self.downsample = 2**3
         self.bandwidth = 250e6
-        self.nchan = 8192
-        self.resolution = 250e6/8192
-        self.fft_shift = 
-        self.acc_len = 
-        self.int_time = 
-        self.scale = 
+        self.samp_rate = self.bandwidth*2
+        self.nchan = 2**13
+        self.resolution = self.bandwidth/self.nchan
+        self.fft_shift = 2**14
+        self.acc_len = 2**27
+        self.clock_rate = self.downsample*self.samp_rate
+        self.int_time = self.acc_len/self.clock_rate
+        
+#     def spec_props(self, bandwidth):
+#     """
+#     Stores spectrometer parameters
+#     """
+#         self.bandwidth = bandwidth
+#         self.samp_rate = self.bandwidth * 2
+#         self.clock_rate = self.downsample * self.samp_rate
+#         self.iadc_rate = 4 * self.clock_rate # Speed of ADC clock
+#         self.int_time = self.acc_len / self.clock_rate
+#         self.resolution = self.bandwidth / self.nchan
+        
 
     def check_if_connected():
     """
@@ -154,7 +168,7 @@ class Spectrometer(object):
         return fits.Column(name=name, format='D', array=data)
 
 
-    # CONFUSED ABOUT THIS FUNCTION -- RACHEL'S init_spec()
+    # ADD IN OTHER THINGS TO INITIALIZE
     def initialize_spec(self, scale=False):
     """
     Starts the fpg process on the SNAP and initializes the 
@@ -169,20 +183,20 @@ class Spectrometer(object):
         self.fpga.upload_to_ram_and_program(self.fpgfile)
         self.fpga.write_int('fft_shift', self.fft_shift)
 
-        self.fpga.write_int('corr_0_acc_len', _____)
+        self.fpga.write_int('corr_0_acc_len', _____) # Don't know what to do here
         self.fpga.write_int('corr_1_acc_len', _____)
         
         # Sync pulse lets the spectrometer know when to start.
         for i in (0,1,0):
             self.fpga.write_int('arm', i)
 
-        self.count = self.fpga.read_int('corr_0_acc_cnt')
-        self.count = self.fpga.read_int('corr_1_acc_cnt')
+        self.count0 = self.fpga.read_int('corr_0_acc_cnt')
+        self.count1 = self.fpga.read_int('corr_1_acc_cnt')
 
         print('Spectrometer is ready.')
 
 
-    # NEEDS A LOT OF WORK
+    # PROBABLY NEEDS A LOT OF WORK
     def poll(self):
     """
     Waits until the integration count has been incrimented and
@@ -192,17 +206,17 @@ class Spectrometer(object):
     Returns:
     - obs_date: Unix time of the integration.
     """
-        self.count = self.fpga.read_int('corr_0_acc_cnt')
-        while self.fpga.read_int('corr_0_acc_cnt') == self.count:
+        self.count0 = self.fpga.read_int('corr_0_acc_cnt')
+        while self.fpga.read_int('corr_0_acc_cnt') == self.count0:
             time.sleep(0.1)
 
-        self.count = self.fpga.read_int('corr_1_acc_cnt')
-        while self.fpga.read_int('corr_1_acc_cnt') == self.count:
+        self.count1 = self.fpga.read_int('corr_1_acc_cnt')
+        while self.fpga.read_int('corr_1_acc_cnt') == self.count1:
             time.sleep(0.1)
 
         obs_date = time.time() - 0.5*self.int_time
-        self.count = self.fpga.read_int('corr_0_acc_cnt')
-        self.count = self.fpga.read_int('corr_1_acc_cnt')
+        self.count0 = self.fpga.read_int('corr_0_acc_cnt')
+        self.count1 = self.fpga.read_int('corr_1_acc_cnt')
         return obs_date
 
         
@@ -210,7 +224,7 @@ class Spectrometer(object):
     def read_bram(self, bram):
     """
     Reads out data from a SNAP BRAM. The data is stored in the SNAP
-    as 32-bit fixed point numbers with the binary poiunt at the 
+    as 32-bit fixed point numbers with the binary point at the 
     30th bit.
 
     Inputs:
@@ -227,11 +241,10 @@ class Spectrometer(object):
         bram_ints[-1] = 0
         bram_ints[-2] = 0
 
-        bram_fp = bram_ints/float(1<<30)
+        bram_fp = bram_ints/float(2**30)
         return bram_fp
 
-
-
+    
     def read_spec(self, filename, nspec, coords, coord_sys='ga', bandwidth=12e6):
     """
     Recieves data from the Leuschner spectrometer and saves it to a
@@ -343,7 +356,6 @@ class Spectrometer(object):
     Inputs:
     - scale: Whether or not to downscale the spectra.
     """
-
         self.scale = int(scale)
         self.fpga.write_int('scale', self.scale)
         for i in range(2):
