@@ -21,6 +21,10 @@ ALT, LAT, LON = 304.0, 37.9183, -122.1067
 # Define the fpga
 #fpga = casperfpga.CasperFpga('hostname')
 
+# Disable warnings
+#import warnings
+#warnings.simplefilter('ignore', UserWarning)
+
 # Create Spectrometer class
 class Spectrometer(object):
     """
@@ -34,52 +38,61 @@ class Spectrometer(object):
     - hostname: IP address of the fpga.
     """
         self.fpga = casperfpga.CasperFpga(hostname)
-        
         self.hostname = hostname
-        #self.mode = 
-        #self.count =
-        #self.scale =
-        #self.fpgfile =
-        #self.nchan = 
-        #self.downsample = 
-        #self.fft_shift = 
-        #self.acc_len = 
+        
+        self.fpgfile = '' 
+        self.mode = 
+        self.clock_rate = 250e6
+        self.adc_rate = 500e6
+        self.downsample = 
+        self.samp_rate = 
+        self.bandwidth = 250e6
+        self.nchan = 8192
+        self.resolution = 250e6/8192
+        self.fft_shift = 
+        self.acc_len = 
+        self.int_time = 
+        self.scale = 
 
     def check_if_connected():
     """
-    Checks if the SNAP is connected and raises an IOError if the client
-    cannot reach the SNAP.
+    Checks if the SNAP is connected and raises an IOError if the 
+    client cannot reach the SNAP.
     """
-        
         if self.fpga.is_connected() == True:
             print('Connection to the SNAP established.')
         elif self.fpga.is_connected() == False:
             raise IOError('NOT connected to the SNAP.')
 
     # IS THIS FUNCTION NEEDED?
-    #def check_if_running():
+    def check_if_running():
     """
     Checks to see if the fpga process for the spectrometer has been
     initialized on the SNAP.
     """
-    
+        if self.fpga.is_running() == True:
+            print('Fpg process is running.')
+        elif self.fpga.is_running() == False:
+            print('WARNING: Fpg process is NOT running.')
+            ## should be an IOError instead?
 
     def fits_header(self, nspec, coords, coord_sys='ga'):
     """
-    Creats the primary HDU (header) of the data collection FITS file. 
-    Writes in observation attributes such as time of observation, number of
-    spectra collected, and the coordinates of the observation target.
+    Creats the primary HDU (header) of the data collection FITS 
+    file. Writes in observation attributes such as time of 
+    observation, number of spectra collected, and the coordinates 
+    of the observation target.
     
     Inputs:
     - nspec: Number of spectra to collect.
     - coords: Coordinate(s) of the target.
         Format: (l/ra, b/dec)
     - coord_sys: Coordinate system used for ''coords''.
-        Default is galactic coordinates. Takes in either galactic ('ga') or
-        equatorial ('eq') coordinate systems.
+        Default is galactic coordinates. Takes in either galactic 
+        ('ga') or equatorial ('eq') coordinate systems.
     Returns:
-    - FITS file primary HDU information containing the attributes of the 
-    observation.
+    - FITS file primary HDU information containing the attributes 
+    of the observation.
     """
         # Ensure that a proper coordinate system has been supplied
         if coord_sys != 'ga' and coord_sys != 'eq':
@@ -101,16 +114,25 @@ class Spectrometer(object):
             galactic = c.galactic
             l, b = galactic.l, galactic.b
 
-        # Create header and write observation attributes into it
+        # Create header and write spectrometer and observation attributes into it
         header = fits.Header()
-        # FPGA = 250MHz
-        # ADC = 500MHz
-        # BW = 250MHz
-        # N channels = 8192
-        # Res = 250e6/8192 = 30.517kHz
-        # FFT shift (rough)
-        # acclen =? inttime (rough)
+
         header['NSPEC'] = (nspec, 'Number of spectra collected')
+        header['FPGFILE'] = (self.fpgfile, 'FPGA FPG file')
+        header['MODE'] = (self.mode, 'Spectrometer mode')
+        header['CLK'] = (self.clock_rate, 'FPGA clock speed [Hz]')
+        header['ADC'] = (self.adc_rate, 'ADC clock speed [Hz]')
+        header['DOWNSAMPLE'] = self.downsample, 'ADC downsampling period')
+        header['SAMPRATE'] = (self.samp_rate, 'Downsampled clock speed [Hz]')
+        header['BW'] = (self.bandwidth, 'Bandwidth of spectra [Hz]')
+        header['NCHAN'] = (self.nchan, 'Number of frequency channels')
+        header['RES'] = (self.resolution, 'Frequency resolution [Hz]')
+        header['FFTSHIFT'] = (self.fft_shift, 'FFT shifting instructions')
+        header['ACCLEN'] = (self.acc_len, 'Number of clock cycles')
+        header['INTTIME'] = (self.int_time, 'Integration time of spectra')
+        header['SCALE'] = (self.scale, 'Average instead of sum on SNAP')
+
+
         header['L'] = (l.value, 'Galactic longitude [deg]')
         header['B'] = (b.value, 'Galactic latitude [deg]')
         header['RA'] = (ra.value, 'Right Ascension [deg]')
@@ -120,6 +142,7 @@ class Spectrometer(object):
 
         return fits.PrimaryHDU(header=header)
 
+
     def make_fits_cols(name, data):
     """
     Create a FITS column of double-precision floating data.
@@ -128,7 +151,7 @@ class Spectrometer(object):
     - name: Name of the FITS column.
     - data: Array of data for the FITS column.
     """
-        return fits.Column(name=name, 'D', array=data)
+        return fits.Column(name=name, format='D', array=data)
 
 
     # CONFUSED ABOUT THIS FUNCTION -- RACHEL'S init_spec()
@@ -161,7 +184,7 @@ class Spectrometer(object):
         print('Spectrometer is ready.')
 
 
-    # PROBABLY NEEDS A LOT OF WORK
+    # NEEDS A LOT OF WORK
     def poll(self):
     """
     Waits until the integration count has been incrimented and
@@ -171,16 +194,44 @@ class Spectrometer(object):
     Returns:
     - obs_date: Unix time of the integration.
     """
-        self.count = self.fpga.read_int('acc_num')
-        while self.fpga.read_int('acc_num') == self.count:
+        self.count = self.fpga.read_int('corr_0_acc_cnt')
+        while self.fpga.read_int('corr_0_acc_cnt') == self.count:
             time.sleep(0.1)
+
+        self.count = self.fpga.read_int('corr_1_acc_cnt')
+        while self.fpga.read_int('corr_1_acc_cnt') == self.count:
+            time.sleep(0.1)
+
         obs_date = time.time() - 0.5*self.int_time
-        self.count = self.fpga.read_int('acc_num')
+        self.count = self.fpga.read_int('corr_0_acc_cnt')
+        self.count = self.fpga.read_int('corr_1_acc_cnt')
         return obs_date
 
         
     # DONT KNOW WHAT TO DO WITH THIS ATM
-    #def read_bram(self, bram):
+    def read_bram(self, bram):
+    """
+    Reads out data from a SNAP BRAM. The data is stored in the SNAP
+    as 32-bit fixed point numbers with the binary poiunt at the 
+    30th bit.
+
+    Inputs:
+    - bram: Name of the BRAM to read data from.
+    Returns:
+     - bram_fp: Array of floats of the SNAP BRAM values.
+     """
+        bram_size = 4*self.nchan
+        bram_ints = np.fromstring(self.fpga.read(bram, bram_size), '>i4')
+
+        # Remove DC offset
+        bram_ints[0] = 0
+        bram_ints[1] = 0
+        bram_ints[-1] = 0
+        bram_ints[-2] = 0
+
+        bram_fp = bram_ints/float(1<<30)
+        return bram_fp
+
 
 
     def read_spec(self, filename, nspec, coords, coord_sys='ga', bandwidth=12e6):
@@ -300,13 +351,6 @@ class Spectrometer(object):
     for i in range(2):
         self.poll()
 
-    #def spec_props(self, bandwidth):
-    #"""
-    #Takes in a sample rate and stores the parameters computed from
-    #it (bandwidth, resolution, etc...).
-    #
-    #Inputs:
-    #"""
 
 
 
