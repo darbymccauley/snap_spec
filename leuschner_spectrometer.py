@@ -86,8 +86,8 @@ class Spectrometer(object):
             raise ValueError('Invalid coordinate system supplied: ' + coord_sys)
         # Set times
         obs_start_unix = time.time() #unix time
-        unix_class = Time(obs_start_unix, format='unix', location=(LON, LAT, ALT)) #unix time class
-        obs_start_jd = unix_class.jd #convert unix time to julian date
+        unix_object = Time(obs_start_unix, format='unix', location=(LON, LAT, ALT)) #unix time Time object
+        obs_start_jd = unix_object.jd #convert unix time to julian date
 
         # Set the coordinates
         if coord_sys == 'ga':
@@ -120,14 +120,26 @@ class Spectrometer(object):
 
         return fits.PrimaryHDU(header=header)
 
+    def make_fits_cols(name, data):
+    """
+    Create a FITS column of double-precision floating data.
+
+    Inputs:
+    - name: Name of the FITS column.
+    - data: Array of data for the FITS column.
+    """
+        return fits.Column(name=name, 'D', array=data)
+
+
     # CONFUSED ABOUT THIS FUNCTION -- RACHEL'S init_spec()
     def initialize_spec(self, scale=False):
     """
-    Starts the fpg process on the SNAP and initializes the spectrometer.
+    Starts the fpg process on the SNAP and initializes the 
+    spectrometer.
 
     Inputs:
-    - scale: Whether or not to scale down each integration by the total
-    number of spectra per integration time.
+    - scale: Whether or not to scale down each integration by the 
+    total number of spectra per integration time.
     - force_restart: Restart the fpg process even if it is already
     running.
     """
@@ -149,14 +161,152 @@ class Spectrometer(object):
         print('Spectrometer is ready.')
 
 
-    
+    # PROBABLY NEEDS A LOT OF WORK
     def poll(self):
-        
-    
-    
-    
+    """
+    Waits until the integration count has been incrimented and
+    returns the date of the integration in seconds (s) since 
+    Jan 1, 1970 UTC.
 
-                
+    Returns:
+    - obs_date: Unix time of the integration.
+    """
+        self.count = self.fpga.read_int('acc_num')
+        while self.fpga.read_int('acc_num') == self.count:
+            time.sleep(0.1)
+        obs_date = time.time() - 0.5*self.int_time
+        self.count = self.fpga.read_int('acc_num')
+        return obs_date
+
+        
+    # DONT KNOW WHAT TO DO WITH THIS ATM
+    #def read_bram(self, bram):
+
+
+    def read_spec(self, filename, nspec, coords, coord_sys='ga', bandwidth=12e6):
+    """
+    Recieves data from the Leuschner spectrometer and saves it to a
+    FITS file. The primary HDU contains information about the
+    observation (coordinates, number of spectra collected, time,
+    etc.) and spectrometer attributes used. Each set of spectra is
+    stored in its own FITS table in the FITS file. The columns in
+    each FITS table are ''auto0_real'', ''auto1_real'',
+    ''cross_real'', and ''cross_imag''. All columns contained
+    double-precision floating-point numbers.
+
+    Inputs:
+    - filename: Name of the output FITs file.
+    - nspec: Number of spectra to collect.
+    - coords: Coordinate(s) of the target.
+        Format: (l/ra, b/dec)
+    - coord_sys: Coordinate system used for ''coords''.
+        Default is galactic coordinates. Takes in either galactic 
+        ('ga') or equatorial ('eq') coordinate systems.
+    Returns:
+    - FITS file with collected spectrometer data.
+    """
+        # Ensure that a proper coordinate system has been supplied
+        if coord_sys != 'ga' and coord_sys != 'eq':
+            raise ValueError('Invalid coordinate system supplied: ' + coord_sys)
+
+        # Make sure the spectrometer is actually running
+        if self.fpga.is_running() == True:
+            continue
+        elif self.fpga.is_running() == False:
+            self.initialize_spec()
+        self.spec_props(bandwidth)
+
+        # BRAM device names
+        bram_names = ['auto0_real', 'auto1_real', 'cross_real', 'cross_imag']
+        bram_devices = map(lambda name: 'spec_' + name, bram_names)
+
+        # Create a primary FITS HDU for a table file
+        hdulist = [self.fits_header(nspec, coords, coord_sys)]
+
+        # Read some number of spectra to a FITS file
+        print('Reading', nspec, 'spectra from the SNAP.')
+        ninteg = 0
+        while ninteg < nspec:
+            # Update the counter and read the spectra from the SNAP
+            spec_date = self.poll()
+            try:
+                spectra = map(self.read_bram(), bram_devices)
+            except RuntimeError:
+                print('WARNING: Cannot reach the SNAP. Skipping integration.')
+                self.fpga.connect()
+                continue
+
+            # Create FITS columns with the data
+            fcols = map(make_fits_cols, bram_names, spectra)
+            hdulist.append(fits.BinTableHDU.from_columns(fcols))
+
+            # Add the accumulation date in several formats to the header
+            unix_spec = Time(spec_date, format='unix', location=(LON, LAT, ALT))
+            julian_date_spec = unix_spec.jd
+            utc_spec = time.asctime(time.gmtime(spec_date))
+            hdulist[-1].header['JD'] = (julian_date_spec, 'Julian date of observation.')
+            hdulist[-1].header['UTC'] = (utc_spec, 'UTC time of observation.')
+            hdulist[-1].header['UNIX TIME'] = (spec_date, 'Seconds since epoch.')
+
+            ninteg += 1
+            integ_time = ninteg*self.int_time
+            print('Integration count:', ninteg, '(' + str(integ_time), 's)')
+
+        # Save the output file
+        print('Saving spectra to output file:', filename)
+        fits.HDUList(hdulist).writeto(filename, clobber=True)
+
+
+    # DON'T THINK MODE REGISTER EXISTS SO IS NEEDED??
+    def reconnect(self):
+    """
+    Runs if the spectrometer can't be reached in the middle of data
+    collection. This should only be run if the fpg process for the
+    spectrometer has already started.
+    """
+        while True:
+            try:
+                self.fpga.read_int('mode')
+                break
+            except:
+                time.sleep(0.1)
+
+
+    def set_fft_shift(self, fft_shift):
+    """
+    Allows the user to change the FFT shifting instructions on the
+    SNAP.
+    
+    Inputs:
+    - fft_shift: FFT shifting instructions for the SNAP.
+    """
+    self.fft_shift = int(fft_shift)
+    self.fpga.write_int('fft_shift', self.fft_shift)
+    for i in range(2):
+        self.poll()
+
+
+    def set_scale(self, scale):
+    """
+    Scales the spectra as desired by the number of spectra 
+    integrated per accumulation.
+
+    Inputs:
+    - scale: Whether or not to downscale the spectra.
+    """
+
+    self.scale = int(scale)
+    self.fpga.write_int('scale', self.scale)
+    for i in range(2):
+        self.poll()
+
+    #def spec_props(self, bandwidth):
+    #"""
+    #Takes in a sample rate and stores the parameters computed from
+    #it (bandwidth, resolution, etc...).
+    #
+    #Inputs:
+    #"""
 
 
 
