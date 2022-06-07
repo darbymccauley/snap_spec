@@ -74,22 +74,26 @@ class Spectrometer(object):
     Checks if the SNAP is connected and raises an IOError if the 
     client cannot reach the SNAP.
     """
-        if self.fpga.is_connected() == True:
+        if self.fpga.is_connected():
             print('Connection to the SNAP established.')
-        elif self.fpga.is_connected() == False:
+        elif not self.fpga.is_connected():
             raise IOError('NOT connected to the SNAP.')
 
-    # IS THIS FUNCTION NEEDED?
-    def check_if_running():
-    """
-    Checks to see if the fpga process for the spectrometer has been
-    initialized on the SNAP.
-    """
-        if self.fpga.is_running() == True:
-            print('Fpg process is running.')
-        elif self.fpga.is_running() == False:
-            print('WARNING: Fpg process is NOT running.')
-            ## should be an IOError instead?
+    
+    #def check_if_running():
+    #"""
+    #Checks to see if the fpga process for the spectrometer has been
+    #initialized on the SNAP.
+    #"""
+    #    if self.fpga.is_running():
+    #        print('Fpg process is running.')
+    #    elif not self.fpga.is_running():
+    #        print('WARNING: Fpg process is NOT running. Starting process...')
+    #        self.fpga.upload_to_ram_and_program(self.fpgfile)
+    #        if self.fpga.is_running():
+    #            print('Fpg process is now running.')
+    #        else:
+    #            raise IOError('Cannot start fpg process.')
 
     def fits_header(self, nspec, coords, coord_sys='ga'):
     """
@@ -169,8 +173,8 @@ class Spectrometer(object):
         return fits.Column(name=name, format='D', array=data)
 
 
-    # CONFUSED ABOUT THIS FUNCTION -- RACHEL'S init_spec()
-    def initialize_spec(self, scale=False):
+    # PROBABLY NEEDS A LOT OF WORK -- RACHEL'S init_spec()
+    def initialize_spec(self):
     """
     Starts the fpg process on the SNAP and initializes the 
     spectrometer.
@@ -183,15 +187,19 @@ class Spectrometer(object):
     """
         print('Starting the spectrometer...')
         
+        # Program fpga
         self.fpga.upload_to_ram_and_program(self.fpgfile)
-        self.fpga.write_int('fft_shift', self.fft_shift)
-
-        self.fpga.write_int('corr_0_acc_len', _____) # Don't know what to do here
-        self.fpga.write_int('corr_1_acc_len', _____)
         
-        # Sync pulse lets the spectrometer know when to start.
+        if not self.fpga.is_running():
+            raise IOError('Could not upload to ram and program fpga.')
+
+       ### HELP ### 
+        self.fpga.write_int('corr_0_acc_len', self.count0) 
+        self.fpga.write_int('corr_1_acc_len', self.count1)
+        
+        # Sync pulse sets the spectrometer know when to start.
         for i in (0,1,0):
-            self.fpga.write_int('arm', i)
+            self.fpga.write_int('sync_arm', i)
 
         self.count0 = self.fpga.read_int('corr_0_acc_cnt')
         self.count1 = self.fpga.read_int('corr_1_acc_cnt')
@@ -226,7 +234,7 @@ class Spectrometer(object):
 
         
     # DONT KNOW WHAT TO DO WITH THIS ATM
-    def read_bram(self, bram):
+    def read_bram(self, bram_name):
     """
     Reads out data from a SNAP BRAM. The data is stored in the SNAP
     as 32-bit fixed point numbers with the binary poiunt at the 
@@ -238,7 +246,7 @@ class Spectrometer(object):
      - bram_fp: Array of floats of the SNAP BRAM values.
      """
         bram_size = 4*self.nchan
-        bram_ints = np.fromstring(self.fpga.read(bram, bram_size), '>i4')
+        bram_ints = np.fromstring(self.fpga.read(bram_name, bram_size), '>i4')
 
         # Remove DC offset
         bram_ints[0] = 0
@@ -278,11 +286,9 @@ class Spectrometer(object):
             raise ValueError('Invalid coordinate system supplied: ' + coord_sys)
 
         # Make sure the spectrometer is actually running
-        if self.fpga.is_running() == True:
-            continue
-        elif self.fpga.is_running() == False:
+        if not self.fpga.is_running():
             self.initialize_spec()
-        self.spec_props(bandwidth)
+        #self.spec_props(bandwidth)
 
         # BRAM device names
         bram_names = ['auto0_real', 'auto1_real', 'cross_real', 'cross_imag']
@@ -322,7 +328,7 @@ class Spectrometer(object):
 
         # Save the output file
         print('Saving spectra to output file:', filename)
-        fits.HDUList(hdulist).writeto(filename, clobber=True)
+        fits.HDUList(hdulist).writeto(filename, overwrite=True)
 
 
     # DON'T THINK MODE REGISTER EXISTS SO IS NEEDED??
