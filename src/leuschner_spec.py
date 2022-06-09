@@ -8,7 +8,7 @@
 
 import casperfpga
 import numpy as np
-import astropy
+# import astropy
 import time 
 from astropy.coordinates import SkyCoord
 import astropy.units as u
@@ -31,12 +31,12 @@ class Spectrometer(object):
     Casperfpga interface to the SNAP spectrometer.
     """
     def __init__(self, hostname):
-    """
-    Create the interface to the SNAP.
-    
-    Inputs:
-    - hostname: IP address of the fpga.
-    """
+        """
+        Create the interface to the SNAP.
+        
+        Inputs:
+        - hostname: IP address of the fpga.
+        """
         self.fpga = casperfpga.CasperFpga(hostname)
         self.hostname = hostname
         
@@ -70,10 +70,10 @@ class Spectrometer(object):
         
 
     def check_if_connected():
-    """
-    Checks if the SNAP is connected and raises an IOError if the 
-    client cannot reach the SNAP.
-    """
+        """
+        Checks if the SNAP is connected and raises an IOError if the 
+        client cannot reach the SNAP.
+        """
         if self.fpga.is_connected():
             print('Connection to the SNAP established.')
         elif not self.fpga.is_connected():
@@ -96,23 +96,23 @@ class Spectrometer(object):
     #            raise IOError('Cannot start fpg process.')
 
     def fits_header(self, nspec, coords, coord_sys='ga'):
-    """
-    Creats the primary HDU (header) of the data collection FITS 
-    file. Writes in observation attributes such as time of 
-    observation, number of spectra collected, and the coordinates 
-    of the observation target.
-    
-    Inputs:
-    - nspec: Number of spectra to collect.
-    - coords: Coordinate(s) of the target.
-        Format: (l/ra, b/dec)
-    - coord_sys: Coordinate system used for ''coords''.
-        Default is galactic coordinates. Takes in either galactic 
-        ('ga') or equatorial ('eq') coordinate systems.
-    Returns:
-    - FITS file primary HDU information containing the attributes 
-    of the observation.
-    """
+        """
+        Creats the primary HDU (header) of the data collection FITS 
+        file. Writes in observation attributes such as time of 
+        observation, number of spectra collected, and the coordinates 
+        of the observation target.
+        
+        Inputs:
+        - nspec: Number of spectra to collect.
+        - coords: Coordinate(s) of the target.
+            Format: (l/ra, b/dec)
+        - coord_sys: Coordinate system used for ''coords''.
+            Default is galactic coordinates. Takes in either galactic 
+            ('ga') or equatorial ('eq') coordinate systems.
+        Returns:
+        - FITS file primary HDU information containing the attributes 
+        of the observation.
+        """
         # Ensure that a proper coordinate system has been supplied
         if coord_sys != 'ga' and coord_sys != 'eq':
             raise ValueError('Invalid coordinate system supplied: ' + coord_sys)
@@ -141,7 +141,7 @@ class Spectrometer(object):
         header['MODE'] = (self.mode, 'Spectrometer mode')
         header['CLK'] = (self.clock_rate, 'FPGA clock speed [Hz]')
         header['ADC'] = (self.adc_rate, 'ADC clock speed [Hz]')
-        header['DOWNSAMPLE'] = self.downsample, 'ADC downsampling period')
+        header['DOWNSAMPLE'] = (self.downsample, 'ADC downsampling period')
         header['SAMPRATE'] = (self.samp_rate, 'Downsampled clock speed [Hz]')
         header['BW'] = (self.bandwidth, 'Bandwidth of spectra [Hz]')
         header['NCHAN'] = (self.nchan, 'Number of frequency channels')
@@ -163,28 +163,28 @@ class Spectrometer(object):
 
 
     def make_fits_cols(name, data):
-    """
-    Create a FITS column of double-precision floating data.
+        """
+        Create a FITS column of double-precision floating data.
 
-    Inputs:
-    - name: Name of the FITS column.
-    - data: Array of data for the FITS column.
-    """
+        Inputs:
+        - name: Name of the FITS column.
+        - data: Array of data for the FITS column.
+        """
         return fits.Column(name=name, format='D', array=data)
 
 
     # PROBABLY NEEDS A LOT OF WORK -- RACHEL'S init_spec()
     def initialize_spec(self):
-    """
-    Starts the fpg process on the SNAP and initializes the 
-    spectrometer.
+        """
+        Starts the fpg process on the SNAP and initializes the 
+        spectrometer.
 
-    Inputs:
-    - scale: Whether or not to scale down each integration by the 
-    total number of spectra per integration time.
-    - force_restart: Restart the fpg process even if it is already
-    running.
-    """
+        Inputs:
+        - scale: Whether or not to scale down each integration by the 
+        total number of spectra per integration time.
+        - force_restart: Restart the fpg process even if it is already
+        running.
+        """
         print('Starting the spectrometer...')
         
         # Program fpga
@@ -210,14 +210,14 @@ class Spectrometer(object):
 
      # PROBABLY NEEDS A LOT OF WORK
     def poll(self):
-    """
-    Waits until the integration count has been incrimented and
-    returns the date of the integration in seconds (s) since 
-    Jan 1, 1970 UTC.
+        """
+        Waits until the integration count has been incrimented and
+        returns the date of the integration in seconds (s) since 
+        Jan 1, 1970 UTC.
 
-    Returns:
-    - obs_date: Unix time of the integration.
-    """
+        Returns:
+        - obs_date: Unix time of the integration.
+        """
         self.count0 = self.fpga.read_int('corr_0_acc_cnt')
         while self.fpga.read_int('corr_0_acc_cnt') == self.count0:
             time.sleep(0.1)
@@ -235,16 +235,16 @@ class Spectrometer(object):
         
     # DONT KNOW WHAT TO DO WITH THIS ATM
     def read_bram(self, bram_name):
-    """
-    Reads out data from a SNAP BRAM. The data is stored in the SNAP
-    as 32-bit fixed point numbers with the binary poiunt at the 
-    30th bit.
+        """
+        Reads out data from a SNAP BRAM. The data is stored in the SNAP
+        as 32-bit fixed point numbers with the binary poiunt at the 
+        30th bit.
 
-    Inputs:
-    - bram: Name of the BRAM to read data from.
-    Returns:
-     - bram_fp: Array of floats of the SNAP BRAM values.
-     """
+        Inputs:
+        - bram: Name of the BRAM to read data from.
+        Returns:
+        - bram_fp: Array of floats of the SNAP BRAM values.
+        """
         bram_size = 4*self.nchan
         bram_ints = np.fromstring(self.fpga.read(bram_name, bram_size), '>i4')
 
@@ -260,27 +260,27 @@ class Spectrometer(object):
 
 
     def read_spec(self, filename, nspec, coords, coord_sys='ga', bandwidth=12e6):
-    """
-    Recieves data from the Leuschner spectrometer and saves it to a
-    FITS file. The primary HDU contains information about the
-    observation (coordinates, number of spectra collected, time,
-    etc.) and spectrometer attributes used. Each set of spectra is
-    stored in its own FITS table in the FITS file. The columns in
-    each FITS table are ''auto0_real'', ''auto1_real'',
-    ''cross_real'', and ''cross_imag''. All columns contained
-    double-precision floating-point numbers.
+        """
+        Recieves data from the Leuschner spectrometer and saves it to a
+        FITS file. The primary HDU contains information about the
+        observation (coordinates, number of spectra collected, time,
+        etc.) and spectrometer attributes used. Each set of spectra is
+        stored in its own FITS table in the FITS file. The columns in
+        each FITS table are ''auto0_real'', ''auto1_real'',
+        ''cross_real'', and ''cross_imag''. All columns contained
+        double-precision floating-point numbers.
 
-    Inputs:
-    - filename: Name of the output FITs file.
-    - nspec: Number of spectra to collect.
-    - coords: Coordinate(s) of the target.
-        Format: (l/ra, b/dec)
-    - coord_sys: Coordinate system used for ''coords''.
-        Default is galactic coordinates. Takes in either galactic 
-        ('ga') or equatorial ('eq') coordinate systems.
-    Returns:
-    - FITS file with collected spectrometer data.
-    """
+        Inputs:
+        - filename: Name of the output FITs file.
+        - nspec: Number of spectra to collect.
+        - coords: Coordinate(s) of the target.
+            Format: (l/ra, b/dec)
+        - coord_sys: Coordinate system used for ''coords''.
+            Default is galactic coordinates. Takes in either galactic 
+            ('ga') or equatorial ('eq') coordinate systems.
+        Returns:
+        - FITS file with collected spectrometer data.
+        """
         # Ensure that a proper coordinate system has been supplied
         if coord_sys != 'ga' and coord_sys != 'eq':
             raise ValueError('Invalid coordinate system supplied: ' + coord_sys)
@@ -333,11 +333,11 @@ class Spectrometer(object):
 
     # DON'T THINK MODE REGISTER EXISTS SO IS NEEDED??
     def reconnect(self):
-    """
-    Runs if the spectrometer can't be reached in the middle of data
-    collection. This should only be run if the fpg process for the
-    spectrometer has already started.
-    """
+        """
+        Runs if the spectrometer can't be reached in the middle of data
+        collection. This should only be run if the fpg process for the
+        spectrometer has already started.
+        """
         while True:
             try:
                 self.fpga.read_int('mode')
@@ -347,13 +347,13 @@ class Spectrometer(object):
 
 
     def set_fft_shift(self, fft_shift):
-    """
-    Allows the user to change the FFT shifting instructions on the
-    SNAP.
-    
-    Inputs:
-    - fft_shift: FFT shifting instructions for the SNAP.
-    """
+        """
+        Allows the user to change the FFT shifting instructions on the
+        SNAP.
+        
+        Inputs:
+        - fft_shift: FFT shifting instructions for the SNAP.
+        """
         self.fft_shift = int(fft_shift)
         self.fpga.write_int('fft_shift', self.fft_shift)
         for i in range(2):
@@ -361,13 +361,13 @@ class Spectrometer(object):
 
 
     def set_scale(self, scale):
-    """
-    Scales the spectra as desired by the number of spectra 
-    integrated per accumulation.
+        """
+        Scales the spectra as desired by the number of spectra 
+        integrated per accumulation.
 
-    Inputs:
-    - scale: Whether or not to downscale the spectra.
-    """
+        Inputs:
+        - scale: Whether or not to downscale the spectra.
+        """
 
         self.scale = int(scale)
         self.fpga.write_int('scale', self.scale)
