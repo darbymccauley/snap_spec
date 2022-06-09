@@ -57,19 +57,19 @@ class Spectrometer(object):
         self.int_time = self.acc_len/self.clock_rate
         
         
-#     def spec_props(self, bandwidth):
-#     """
-#     Stores spectrometer parameters
-#     """
-#         self.bandwidth = bandwidth
-#         self.samp_rate = self.bandwidth * 2
-#         self.clock_rate = self.downsample * self.samp_rate
-#         self.iadc_rate = 4 * self.clock_rate # Speed of ADC clock
-#         self.int_time = self.acc_len / self.clock_rate
-#         self.resolution = self.bandwidth / self.nchan
+    # def spec_props(self, bandwidth):
+    #     """
+    #     Stores spectrometer parameters
+    #     """
+    #     self.bandwidth = bandwidth
+    #     self.samp_rate = self.bandwidth * 2
+    #     self.clock_rate = self.downsample * self.samp_rate
+    #     self.iadc_rate = 4 * self.clock_rate # Speed of ADC clock
+    #     self.int_time = self.acc_len / self.clock_rate
+    #     self.resolution = self.bandwidth / self.nchan
         
 
-    def check_if_connected():
+    def check_if_connected(self):
         """
         Checks if the SNAP is connected and raises an IOError if the 
         client cannot reach the SNAP.
@@ -80,20 +80,20 @@ class Spectrometer(object):
             raise IOError('NOT connected to the SNAP.')
 
     
-    #def check_if_running():
-    #"""
-    #Checks to see if the fpga process for the spectrometer has been
-    #initialized on the SNAP.
-    #"""
-    #    if self.fpga.is_running():
-    #        print('Fpg process is running.')
-    #    elif not self.fpga.is_running():
-    #        print('WARNING: Fpg process is NOT running. Starting process...')
-    #        self.fpga.upload_to_ram_and_program(self.fpgfile)
-    #        if self.fpga.is_running():
-    #            print('Fpg process is now running.')
-    #        else:
-    #            raise IOError('Cannot start fpg process.')
+    # def check_if_running(self):
+    #     """
+    #     Checks to see if the fpga process for the spectrometer has been
+    #     initialized on the SNAP.
+    #     """
+    #     if self.fpga.is_running():
+    #         print('Fpg process is running.')
+    #     elif not self.fpga.is_running():
+    #         print('WARNING: Fpg process is NOT running. Starting process...')
+    #         self.fpga.upload_to_ram_and_program(self.fpgfile)
+    #         if self.fpga.is_running():
+    #             print('Fpg process is now running.')
+    #         else:
+    #             raise IOError('Cannot start fpg process.')
 
     def fits_header(self, nspec, coords, coord_sys='ga'):
         """
@@ -157,12 +157,12 @@ class Spectrometer(object):
         header['RA'] = (ra.value, 'Right Ascension [deg]')
         header['DEC'] = (dec.value, 'Declination [deg]')
         header['JD'] = (obs_start_jd, 'Julian date of start time')
-        header['UNIX'] = (obs_start_unix_time, 'Seconds since epoch')
+        header['UNIX'] = (obs_start_unix, 'Seconds since epoch')
 
         return fits.PrimaryHDU(header=header)
 
 
-    def make_fits_cols(name, data):
+    def make_fits_cols(self, name, data):
         """
         Create a FITS column of double-precision floating data.
 
@@ -233,7 +233,7 @@ class Spectrometer(object):
 
 
         
-    # DONT KNOW WHAT TO DO WITH THIS ATM
+    # PROBABLY NEEDS A LOT OF WORK
     def read_bram(self, bram_name):
         """
         Reads out data from a SNAP BRAM. The data is stored in the SNAP
@@ -311,7 +311,7 @@ class Spectrometer(object):
                 continue
 
             # Create FITS columns with the data
-            fcols = map(make_fits_cols, bram_names, spectra)
+            fcols = map(self.make_fits_cols(), bram_names, spectra)
             hdulist.append(fits.BinTableHDU.from_columns(fcols))
 
             # Add the accumulation date in several formats to the header
@@ -331,7 +331,7 @@ class Spectrometer(object):
         fits.HDUList(hdulist).writeto(filename, overwrite=True)
 
 
-    # DON'T THINK MODE REGISTER EXISTS SO IS NEEDED??
+    # DON'T KNOW WHAT TO DO WITH THIS (IF NEEDED AT ALL)
     def reconnect(self):
         """
         Runs if the spectrometer can't be reached in the middle of data

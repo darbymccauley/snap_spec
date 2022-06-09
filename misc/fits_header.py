@@ -6,7 +6,7 @@
 
 #################################################################
 
-import astropy
+# import astropy
 from astropy.io import fits
 from astropy.coordinates import SkyCoord
 import astropy.units as u
