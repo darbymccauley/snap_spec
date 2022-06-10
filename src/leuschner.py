@@ -1,4 +1,4 @@
-###########################################################################
+##########################################################################
 ## This module provides tools for interacting  with the spectrometer at 
 ## the UC Berkeley Leuschner Radio Observatory. 
 
@@ -39,7 +39,7 @@ class Spectrometer(object):
         self.fpga = casperfpga.CasperFpga(hostname)
         self.hostname = hostname
         
-        self.fpgfile = '' # grab latest design
+        self.fpgfile = 'fpga/ugradio_corrspec_2022-02-22_0905.fpg' # grab latest design
         # self.mode = 
         self.count0 = 0
         self.count1 = 0
@@ -138,7 +138,7 @@ class Spectrometer(object):
 
         header['NSPEC'] = (nspec, 'Number of spectra collected')
         header['FPGFILE'] = (self.fpgfile, 'FPGA FPG file')
-        header['MODE'] = (self.mode, 'Spectrometer mode')
+       #header['MODE'] = (self.mode, 'Spectrometer mode')
         header['CLK'] = (self.clock_rate, 'FPGA clock speed [Hz]')
         header['ADC'] = (self.adc_rate, 'ADC clock speed [Hz]')
         header['DOWNSAMPLE'] = (self.downsample, 'ADC downsampling period')
