@@ -8,22 +8,21 @@
 
 import casperfpga
 import numpy as np
-# import astropy
 import time 
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 from astropy.time import Time
 from astropy.io import fits
 
+
 # Leuschner Observatory coordinates
 ALT, LAT, LON = 304.0, 37.9183, -122.1067
 
-# Define the fpga
-#fpga = casperfpga.CasperFpga('hostname')
-
 # Disable warnings
-#import warnings
-#warnings.simplefilter('ignore', UserWarning)
+import warnings
+warnings.simplefilter('ignore', UserWarning)
+
+
 
 # Create Spectrometer class
 class Spectrometer(object):
@@ -41,7 +40,7 @@ class Spectrometer(object):
         self.hostname = hostname
         
         self.fpgfile = '' # grab latest design
-#         self.mode = 
+        # self.mode = 
         self.count0 = 0
         self.count1 = 0
         self.scale = 0
@@ -94,6 +93,7 @@ class Spectrometer(object):
     #             print('Fpg process is now running.')
     #         else:
     #             raise IOError('Cannot start fpg process.')
+
 
     def fits_header(self, nspec, coords, coord_sys='ga'):
         """
@@ -151,7 +151,6 @@ class Spectrometer(object):
         header['INTTIME'] = (self.int_time, 'Integration time of spectra')
         header['SCALE'] = (self.scale, 'Average instead of sum on SNAP')
 
-
         header['L'] = (l.value, 'Galactic longitude [deg]')
         header['B'] = (b.value, 'Galactic latitude [deg]')
         header['RA'] = (ra.value, 'Right Ascension [deg]')
@@ -207,7 +206,6 @@ class Spectrometer(object):
         print('Spectrometer is ready.')
 
 
-
      # PROBABLY NEEDS A LOT OF WORK
     def poll(self):
         """
@@ -230,7 +228,6 @@ class Spectrometer(object):
         self.count0 = self.fpga.read_int('corr_0_acc_cnt')
         self.count1 = self.fpga.read_int('corr_1_acc_cnt')
         return obs_date
-
 
         
     # PROBABLY NEEDS A LOT OF WORK
@@ -256,7 +253,6 @@ class Spectrometer(object):
 
         bram_fp = bram_ints/float(1<<30)
         return bram_fp
-
 
 
     def read_spec(self, filename, nspec, coords, coord_sys='ga', bandwidth=12e6):
@@ -368,7 +364,6 @@ class Spectrometer(object):
         Inputs:
         - scale: Whether or not to downscale the spectra.
         """
-
         self.scale = int(scale)
         self.fpga.write_int('scale', self.scale)
         for i in range(2):

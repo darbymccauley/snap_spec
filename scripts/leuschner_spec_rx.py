@@ -2,7 +2,8 @@
 ## A very simple receiver script for the Leuschner Radio 
 ## Observatory at UC Berkeley.
 ##
-## Darby Mccauley
+## Darby Mccauley 2022
+## darbymccauley@berkeley.edu
 ##
 ##################################################################
 
