@@ -60,20 +60,7 @@ class Spectrometer(object):
 
         # hera_corr_f stuff        
         self.s = SnapFengine(hostname, redishost=None)
-        # self.block = s.Block(host=self.fpga, name=None)
-        # self.sync = blocks.Sync(host=self.fpga, name=None)
-        # self.input = blocks.Input(host=self.fpga, name=None)
-        # self.delay = blocks.Delay(host=self.fpga, name=None)
-        # self.pfb = blocks.Pfb(host=self.fpga, name=None)
-        # self.phase_switch = blocks.PhaseSwitch(host=self.fpga, name=None)
-        # self.eq = blocks.Eq(host=self.fpga, name=None)
-        # self.eqtvg = blocks.EqTvg(host=self.fpga, name=None)
-        # self.chanreorder = blocks.ChanReorder(host=self.fpga, name=None, nchans=self.nchan)
-        # self.packetizer = blocks.Packetizer(host=self.fpga, name=None)
-        # self.rotator = blocks.Rotator(host=self.fpga, name=None, nchans=self.nchan)
-        # self.corr = s.Corr(host=self.fpga, name=None, acc_len=self.acc_len)
-
-
+        
 
     def check_connection(self):
         """
@@ -177,33 +164,6 @@ class Spectrometer(object):
         - data: Array of data for the FITS column.
         """
         return fits.Column(name=name, format='D', array=data)
-
-##############################################################
-    # def set_input(self, pol1, pol2):
-    #     """
-    #     Set correlation inputs to 'pol1' and 'pol2'.
-    #     """
-    #     self.fpga.write_int('input_sel', (pol1 + (pol2<<8)))
-    
-    # def wait_for_acc(self):
-    #     """
-    #     Wait for a new accumulation to complete.
-    #     """
-    #     cnt = self.fpga.read_uint('acc_cnt')
-    #     while self.fpga.read_uint('acc_cnt') < (cnt+1):
-    #         time.sleep(0.1)
-    #     return 1
-
-    # def read_bram(self, flush_vacc=True):
-    #     """
-    #     Waits for the nect accumulation to complete and then
-    #     outputs the contents of the results BRAM. If you want a
-    #     fresh accumulation use get_new_corr(pol1, pol2) instead.
-    #     """
-    #     if flush_vacc:
-    #         self.wait_for_acc()
-    #     spec = np.array()
-
 
 
     def initialize_spec(self):
