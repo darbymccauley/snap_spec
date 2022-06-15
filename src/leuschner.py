@@ -11,7 +11,7 @@
 
 
 import casperfpga
-# from hera_corr_f import SnapFengine
+from hera_corr_f import SnapFengine
 import ugradio
 
 import numpy as np
@@ -40,18 +40,8 @@ class Spectrometer(object):
         Inputs:
         - hostname: IP address of the fpga (str).
         """
-        # self.s = SnapFengine(hostname, redishost=None)
-
-        self.fpga = casperfpga.CasperFpga(hostname)
-        self.hostname = hostname
-        
-        self.adc = casperfpga.snapadc.SNAPADC(interface=self.fpga, ref=10) # 10 MHz reference signal 
-        self.synth = casperfpga.synth.LMX2581(interface=self.fpga, controller_name=____)
-
+        self.IP = hostname
         self.fpgfile = 'fpga/ugradio_corrspec_2022-02-22_0905.fpg'
-        # self.mode = 
-        self.count0 = 0
-        self.count1 = 0
         self.scale = 0
         self.adc_rate = 500e6
         self.downsample = 1<<3
@@ -63,7 +53,27 @@ class Spectrometer(object):
         self.acc_len = 1<<27
         self.clock_rate = self.downsample*self.samp_rate # or 10 MHz?
         self.int_time = self.acc_len/self.clock_rate
-        
+
+
+        self.fpga = casperfpga.CasperFpga(hostname)
+        self.adc = casperfpga.snapadc.SNAPADC(interface=self.fpga, ref=10) # 10 MHz reference signal 
+
+        # hera_corr_f stuff        
+        self.s = SnapFengine(hostname, redishost=None)
+        # self.block = s.Block(host=self.fpga, name=None)
+        # self.sync = blocks.Sync(host=self.fpga, name=None)
+        # self.input = blocks.Input(host=self.fpga, name=None)
+        # self.delay = blocks.Delay(host=self.fpga, name=None)
+        # self.pfb = blocks.Pfb(host=self.fpga, name=None)
+        # self.phase_switch = blocks.PhaseSwitch(host=self.fpga, name=None)
+        # self.eq = blocks.Eq(host=self.fpga, name=None)
+        # self.eqtvg = blocks.EqTvg(host=self.fpga, name=None)
+        # self.chanreorder = blocks.ChanReorder(host=self.fpga, name=None, nchans=self.nchan)
+        # self.packetizer = blocks.Packetizer(host=self.fpga, name=None)
+        # self.rotator = blocks.Rotator(host=self.fpga, name=None, nchans=self.nchan)
+        # self.corr = s.Corr(host=self.fpga, name=None, acc_len=self.acc_len)
+
+
 
     def check_connection(self):
         """
@@ -169,7 +179,34 @@ class Spectrometer(object):
         return fits.Column(name=name, format='D', array=data)
 
 ##############################################################
-    def initialize_spec(self, force=False, verify=True):
+    # def set_input(self, pol1, pol2):
+    #     """
+    #     Set correlation inputs to 'pol1' and 'pol2'.
+    #     """
+    #     self.fpga.write_int('input_sel', (pol1 + (pol2<<8)))
+    
+    # def wait_for_acc(self):
+    #     """
+    #     Wait for a new accumulation to complete.
+    #     """
+    #     cnt = self.fpga.read_uint('acc_cnt')
+    #     while self.fpga.read_uint('acc_cnt') < (cnt+1):
+    #         time.sleep(0.1)
+    #     return 1
+
+    # def read_bram(self, flush_vacc=True):
+    #     """
+    #     Waits for the nect accumulation to complete and then
+    #     outputs the contents of the results BRAM. If you want a
+    #     fresh accumulation use get_new_corr(pol1, pol2) instead.
+    #     """
+    #     if flush_vacc:
+    #         self.wait_for_acc()
+    #     spec = np.array()
+
+
+
+    def initialize_spec(self):
         """
         Starts the fpg process on the SNAP and initializes the 
         spectrometer.
@@ -181,22 +218,48 @@ class Spectrometer(object):
         if not self.fpga.is_running():
             raise IOError('Could not program fpga.')
 
-        # Initialize ADC
+        # Initialize ADC and Synth, then reset
         self.adc.init(self.samp_rate, self.nchan)
-        
-        # Initialize Synth
-        self.synth.init()
+        # snapfeng.initialize_adc(self.samp_rate, self.nchan)
 
-        # ### HELP ### 
-        # self.fpga.write_int('corr_0_acc_len', self.count0) 
-        # self.fpga.write_int('corr_1_acc_len', self.count1)
-        
-        # Sync pulse lets the spectrometer know when to start.
-        for i in (0,1,0):
-            self.fpga.write_int('sync_arm', i)
+        # Initialize Sync
+        self.s.sync.initialize()
+        self.s.sync.arm_sync()
 
-        # self.count0 = self.fpga.read_int('corr_0_acc_cnt')
-        # self.count1 = self.fpga.read_int('corr_1_acc_cnt')
+        # Initialize Noise
+        self.s.noise.initialize()
+
+        # Initialize Input
+        self.s.input.initialize() # Switch to ADCs. Begin computing stats.
+
+        # Initialize Delay
+        self.s.delay.initialize() # Initialize all delays to 0
+
+        # Initialize Pfb
+        self.s.pfb.initialize(fft_shift=self.fft_shift) # or keep default???
+
+        # Initialize PhaseSwitch
+        self.s.phase_switch.initialize()
+
+        # Initialize Eq
+        self.s.eq.initialize()
+
+        # Initialize Channel Order
+        self.s.reorder.initialize()
+
+        # Initialize Packetizer
+        self.s.packetizer.initialize()
+
+        # Initialize Rotator
+        self.rotator.initialize()
+
+        # Initialize Correlator
+        self.corr.initialize()
+
+
+        # Sync pulse lets the spectrometer know when to start
+        # for i in (0,1,0):
+        #     self.fpga.write_int('sync_arm', i)
 
         print('Spectrometer is ready.')
 ##############################################################
@@ -225,7 +288,7 @@ class Spectrometer(object):
         return obs_date
 
         
-    # NEEDS WORK --- NAMES OF BRAMS?
+    # NOT NEEDED ANYMORE???
     def read_bram(self, bram_name):
         """
         Reads out data from a SNAP BRAM. The data is stored in the SNAP
@@ -237,7 +300,7 @@ class Spectrometer(object):
         Returns:
         - bram_fp: Array of floats of the SNAP BRAM values.
         """
-        bram_size = 4*self.nchan
+        bram_size = 3*self.nchan
         bram_ints = np.fromstring(self.fpga.read(bram_name, bram_size), '>i4')
 
         # Remove DC offset
@@ -276,13 +339,12 @@ class Spectrometer(object):
         if coord_sys != 'ga' and coord_sys != 'eq':
             raise ValueError('Invalid coordinate system supplied: ' + coord_sys)
 
-        # Make sure the spectrometer is actually running
+        # Make sure the spectrometer is actually running. If not, initialize.
         if not self.fpga.is_running():
             self.initialize_spec()
-        #self.spec_props(bandwidth)
 
-        # BRAM device names
-        bram_names = ['auto0_real', 'auto1_real', 'cross_real', 'cross_imag']
+        # Assign BRAM device names
+        bram_names = ['auto0_real', 'auto1_real', 'cross_complex']
         bram_devices = map(lambda name: 'spec_' + name, bram_names)
 
         # Create a primary FITS HDU for a table file
@@ -294,8 +356,13 @@ class Spectrometer(object):
         while ninteg < nspec:
             # Update the counter and read the spectra from the SNAP
             spec_date = self.poll()
+            pols = [0,0], [1,1], [0,1] # Polarizations for auto0, auto1, cross
             try:
-                spectra = map(self.read_bram(), bram_devices)
+                for i in range(3):
+                    pol1, pol2 = pols[i]
+                    spec = self.s.corr.get_new_corr(pol1 , pol2)
+                    spectra = map(self.fpga.read(), bram_devices, SIZE)
+
             except RuntimeError:
                 print('WARNING: Cannot reach the SNAP. Skipping integration.')
                 self.fpga.connect()
