@@ -1,27 +1,30 @@
 ##########################################################################
-## This module provides tools for interacting  with the spectrometer at 
-## the UC Berkeley Leuschner Radio Observatory. 
-
-## Darby McCauley
-
+# This script allows the user to interact with the spectrometer at the
+# the UC Berkeley Leuschner Radio Observatory. The spectrometer is
+# configured to a SNAP board, which is controlled by a rPi4. The two 
+# communicate via casperfpga through the tcpborphserver3 server,
+# reconfigured for SNAPs.
+# 
+# Darby McCauley 2022
+# darbymccauley@berkeley.edu
 ###########################################################################
 
+
 import casperfpga
+# from hera_corr_f import SnapFengine
+import ugradio
+
 import numpy as np
 import time 
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 from astropy.time import Time
 from astropy.io import fits
+import warnings
 
-
-# Leuschner Observatory coordinates
-ALT, LAT, LON = 304.0, 37.9183, -122.1067
 
 # Disable warnings
-import warnings
-warnings.simplefilter('ignore', UserWarning)
-
+# warnings.simplefilter('ignore', UserWarning)
 
 
 # Create Spectrometer class
@@ -29,46 +32,40 @@ class Spectrometer(object):
     """
     Casperfpga interface to the SNAP spectrometer.
     """
+
     def __init__(self, hostname):
         """
         Create the interface to the SNAP.
         
         Inputs:
-        - hostname: IP address of the fpga.
+        - hostname: IP address of the fpga (str).
         """
+        # self.s = SnapFengine(hostname, redishost=None)
+
         self.fpga = casperfpga.CasperFpga(hostname)
         self.hostname = hostname
         
-        self.fpgfile = 'fpga/ugradio_corrspec_2022-02-22_0905.fpg' # grab latest design
+        self.adc = casperfpga.snapadc.SNAPADC(interface=self.fpga, ref=10) # 10 MHz reference signal 
+        self.synth = casperfpga.synth.LMX2581(interface=self.fpga, controller_name=____)
+
+        self.fpgfile = 'fpga/ugradio_corrspec_2022-02-22_0905.fpg'
         # self.mode = 
         self.count0 = 0
         self.count1 = 0
         self.scale = 0
         self.adc_rate = 500e6
-        self.downsample = 2**3
+        self.downsample = 1<<3
         self.bandwidth = 250e6
         self.samp_rate = self.bandwidth*2
-        self.nchan = 2**13
+        self.nchan = 1<<13
         self.resolution = self.bandwidth/self.nchan
-        self.fft_shift = 2**14
-        self.acc_len = 2**27
-        self.clock_rate = self.downsample*self.samp_rate
+        self.fft_shift = 1<<14
+        self.acc_len = 1<<27
+        self.clock_rate = self.downsample*self.samp_rate # or 10 MHz?
         self.int_time = self.acc_len/self.clock_rate
         
-        
-    # def spec_props(self, bandwidth):
-    #     """
-    #     Stores spectrometer parameters
-    #     """
-    #     self.bandwidth = bandwidth
-    #     self.samp_rate = self.bandwidth * 2
-    #     self.clock_rate = self.downsample * self.samp_rate
-    #     self.iadc_rate = 4 * self.clock_rate # Speed of ADC clock
-    #     self.int_time = self.acc_len / self.clock_rate
-    #     self.resolution = self.bandwidth / self.nchan
-        
 
-    def check_if_connected(self):
+    def check_connection(self):
         """
         Checks if the SNAP is connected and raises an IOError if the 
         client cannot reach the SNAP.
@@ -79,25 +76,25 @@ class Spectrometer(object):
             raise IOError('NOT connected to the SNAP.')
 
     
-    # def check_if_running(self):
-    #     """
-    #     Checks to see if the fpga process for the spectrometer has been
-    #     initialized on the SNAP.
-    #     """
-    #     if self.fpga.is_running():
-    #         print('Fpg process is running.')
-    #     elif not self.fpga.is_running():
-    #         print('WARNING: Fpg process is NOT running. Starting process...')
-    #         self.fpga.upload_to_ram_and_program(self.fpgfile)
-    #         if self.fpga.is_running():
-    #             print('Fpg process is now running.')
-    #         else:
-    #             raise IOError('Cannot start fpg process.')
+    def check_running(self):
+        """
+        Checks if the fpga process for the spectrometer has been
+        initialized on the SNAP.
+        """
+        if self.fpga.is_running():
+            print('Fpg process is running.')
+        elif not self.fpga.is_running():
+            print('WARNING: Fpg process is NOT running. Starting process...')
+            self.fpga.upload_to_ram_and_program(self.fpgfile)
+            if self.fpga.is_running():
+                print('Fpg process is now running.')
+            else:
+                raise IOError('Cannot start fpg process.')
 
 
     def fits_header(self, nspec, coords, coord_sys='ga'):
         """
-        Creats the primary HDU (header) of the data collection FITS 
+        Creates the primary HDU (header) of the data collection FITS 
         file. Writes in observation attributes such as time of 
         observation, number of spectra collected, and the coordinates 
         of the observation target.
@@ -118,7 +115,7 @@ class Spectrometer(object):
             raise ValueError('Invalid coordinate system supplied: ' + coord_sys)
         # Set times
         obs_start_unix = time.time() #unix time
-        unix_object = Time(obs_start_unix, format='unix', location=(LON, LAT, ALT)) #unix time Time object
+        unix_object = Time(obs_start_unix, format='unix', location=(ugradio.leo.lon, ugradio.leo.lat, ugradio.leo.alt)) #unix time Time object
         obs_start_jd = unix_object.jd #convert unix time to julian date
 
         # Set the coordinates
@@ -138,7 +135,7 @@ class Spectrometer(object):
 
         header['NSPEC'] = (nspec, 'Number of spectra collected')
         header['FPGFILE'] = (self.fpgfile, 'FPGA FPG file')
-       #header['MODE'] = (self.mode, 'Spectrometer mode')
+        # header['MODE'] = (self.mode, 'Spectrometer mode')
         header['CLK'] = (self.clock_rate, 'FPGA clock speed [Hz]')
         header['ADC'] = (self.adc_rate, 'ADC clock speed [Hz]')
         header['DOWNSAMPLE'] = (self.downsample, 'ADC downsampling period')
@@ -171,42 +168,40 @@ class Spectrometer(object):
         """
         return fits.Column(name=name, format='D', array=data)
 
-
-    # PROBABLY NEEDS A LOT OF WORK -- RACHEL'S init_spec()
-    def initialize_spec(self):
+##############################################################
+    def initialize_spec(self, force=False, verify=True):
         """
         Starts the fpg process on the SNAP and initializes the 
         spectrometer.
-
-        Inputs:
-        - scale: Whether or not to scale down each integration by the 
-        total number of spectra per integration time.
-        - force_restart: Restart the fpg process even if it is already
-        running.
         """
         print('Starting the spectrometer...')
         
         # Program fpga
         self.fpga.upload_to_ram_and_program(self.fpgfile)
-        
         if not self.fpga.is_running():
-            raise IOError('Could not upload to ram and program fpga.')
+            raise IOError('Could not program fpga.')
 
-       ### HELP ### 
-        self.fpga.write_int('corr_0_acc_len', self.count0) 
-        self.fpga.write_int('corr_1_acc_len', self.count1)
+        # Initialize ADC
+        self.adc.init(self.samp_rate, self.nchan)
         
-        # Sync pulse sets the spectrometer know when to start.
+        # Initialize Synth
+        self.synth.init()
+
+        # ### HELP ### 
+        # self.fpga.write_int('corr_0_acc_len', self.count0) 
+        # self.fpga.write_int('corr_1_acc_len', self.count1)
+        
+        # Sync pulse lets the spectrometer know when to start.
         for i in (0,1,0):
             self.fpga.write_int('sync_arm', i)
 
-        self.count0 = self.fpga.read_int('corr_0_acc_cnt')
-        self.count1 = self.fpga.read_int('corr_1_acc_cnt')
+        # self.count0 = self.fpga.read_int('corr_0_acc_cnt')
+        # self.count1 = self.fpga.read_int('corr_1_acc_cnt')
 
         print('Spectrometer is ready.')
+##############################################################
 
-
-     # PROBABLY NEEDS A LOT OF WORK
+    # NEEDS A LOT OF WORK
     def poll(self):
         """
         Waits until the integration count has been incrimented and
@@ -230,7 +225,7 @@ class Spectrometer(object):
         return obs_date
 
         
-    # PROBABLY NEEDS A LOT OF WORK
+    # NEEDS WORK --- NAMES OF BRAMS?
     def read_bram(self, bram_name):
         """
         Reads out data from a SNAP BRAM. The data is stored in the SNAP
@@ -255,7 +250,7 @@ class Spectrometer(object):
         return bram_fp
 
 
-    def read_spec(self, filename, nspec, coords, coord_sys='ga', bandwidth=12e6):
+    def read_spec(self, filename, nspec, coords, coord_sys='ga'):
         """
         Recieves data from the Leuschner spectrometer and saves it to a
         FITS file. The primary HDU contains information about the
@@ -311,7 +306,7 @@ class Spectrometer(object):
             hdulist.append(fits.BinTableHDU.from_columns(fcols))
 
             # Add the accumulation date in several formats to the header
-            unix_spec = Time(spec_date, format='unix', location=(LON, LAT, ALT))
+            unix_spec = Time(spec_date, format='unix', location=(ugradio.leo.lon, ugradio.leo.lat, ugradio.leo.alt))
             julian_date_spec = unix_spec.jd
             utc_spec = time.asctime(time.gmtime(spec_date))
             hdulist[-1].header['JD'] = (julian_date_spec, 'Julian date of observation.')
@@ -327,7 +322,7 @@ class Spectrometer(object):
         fits.HDUList(hdulist).writeto(filename, overwrite=True)
 
 
-    # DON'T KNOW WHAT TO DO WITH THIS (IF NEEDED AT ALL)
+    # DON'T KNOW ABOUT THESE NEXT THREE FUNCTIONS
     def reconnect(self):
         """
         Runs if the spectrometer can't be reached in the middle of data
