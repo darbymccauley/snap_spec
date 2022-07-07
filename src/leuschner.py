@@ -28,31 +28,29 @@ class Spectrometer(object):
     Casperfpga interface to the SNAP spectrometer.
     """
 
-    def __init__(self, host):
+    def __init__(self):
         """
         Create the interface to the SNAP.
-        
-        Inputs:
-        - host: IP address of the fpga (str).
         """
-        self.IP = host
+        self.host = 'localhost'
         self.fpgfile = 'fpga/ugradio_corrspec_2022-02-22_0905.fpg'
-        self.scale = 0
-        # self.adc_rate = 500e6
-        self.downsample = 1<<3
-        self.bandwidth = 250e6
-        self.samp_rate = self.bandwidth*2
-        self.nchan = 1<<13
-        self.resolution = self.bandwidth/self.nchan
-        self.fft_shift = 1<<14
-        self.acc_len = 1<<27
-        self.clock_rate = self.downsample*self.samp_rate # or 10 MHz?
-        self.int_time = self.acc_len/self.clock_rate
+        
+        # self.scale = 0
+        # # self.adc_rate = 500e6
+        # self.downsample = 1<<3
+        # self.bandwidth = 250e6
+        # self.samp_rate = self.bandwidth*2
+        # self.nchan = 1<<13
+        # self.resolution = self.bandwidth/self.nchan
+        # self.fft_shift = 1<<14
+        # self.acc_len = 1<<27
+        # self.clock_rate = self.downsample*self.samp_rate # or 10 MHz?
+        # self.int_time = self.acc_len/self.clock_rate
 
 
-        self.fpga = casperfpga.CasperFpga(host)
+        self.fpga = casperfpga.CasperFpga(self.host)
         self.adc = casperfpga.snapadc.SNAPADC(self.fpga) # 10 MHz reference signal default       
-        self.s = SnapFengine(host, redishost='default')
+        self.s = SnapFengine(self.host, transport='default')
         
 
     def check_connection(self):
@@ -68,15 +66,17 @@ class Spectrometer(object):
     
     def check_running(self):
         """
-        Checks if the fpga process for the spectrometer has been
-        initialized on the SNAP.
+        Checks if the fpga has been programmed and is running.
+        Returns an IOError is the SNAP is not running and cannot
+        program.
         """
-        if self.fpga.is_running():
+        if self.fpga.is_running() and self.s.is_programmed():
             print("Fpga is programmed and running.")
-        elif not self.fpga.is_running():
+        elif not self.fpga.is_running() or not self.s.is_programmed():
             print("WARNING: Fpga is not running. Programming...")
             self.fpga.upload_to_ram_and_program(self.fpgfile)
-            if self.fpga.is_running():
+            self.s.fpga.upload_to_ram_and_program(self.fpgfile)
+            if self.fpga.is_running() and self.s.is_programmed():
                 print("Fpga is now programmed and running.")
             else:
                 raise IOError("Cannot program fpga.")
