@@ -20,11 +20,6 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 from astropy.time import Time
 from astropy.io import fits
-import warnings
-
-
-# Disable warnings
-# warnings.simplefilter('ignore', UserWarning)
 
 
 # Create Spectrometer class
@@ -33,17 +28,17 @@ class Spectrometer(object):
     Casperfpga interface to the SNAP spectrometer.
     """
 
-    def __init__(self, hostname):
+    def __init__(self, host):
         """
         Create the interface to the SNAP.
         
         Inputs:
-        - hostname: IP address of the fpga (str).
+        - host: IP address of the fpga (str).
         """
-        self.IP = hostname
+        self.IP = host
         self.fpgfile = 'fpga/ugradio_corrspec_2022-02-22_0905.fpg'
         self.scale = 0
-        self.adc_rate = 500e6
+        # self.adc_rate = 500e6
         self.downsample = 1<<3
         self.bandwidth = 250e6
         self.samp_rate = self.bandwidth*2
@@ -55,11 +50,9 @@ class Spectrometer(object):
         self.int_time = self.acc_len/self.clock_rate
 
 
-        self.fpga = casperfpga.CasperFpga(hostname)
-        self.adc = casperfpga.snapadc.SNAPADC(interface=self.fpga, ref=10) # 10 MHz reference signal 
-
-        # hera_corr_f stuff        
-        self.s = SnapFengine(hostname, redishost=None)
+        self.fpga = casperfpga.CasperFpga(host)
+        self.adc = casperfpga.snapadc.SNAPADC(self.fpga) # 10 MHz reference signal default       
+        self.s = SnapFengine(host, redishost='default')
         
 
     def check_connection(self):
@@ -68,9 +61,9 @@ class Spectrometer(object):
         client cannot reach the SNAP.
         """
         if self.fpga.is_connected():
-            print('Connection to the SNAP established.')
+            print("Connection to the SNAP established.")
         elif not self.fpga.is_connected():
-            raise IOError('NOT connected to the SNAP.')
+            raise IOError("NOT connected to the SNAP.")
 
     
     def check_running(self):
@@ -79,14 +72,14 @@ class Spectrometer(object):
         initialized on the SNAP.
         """
         if self.fpga.is_running():
-            print('Fpg process is running.')
+            print("Fpga is programmed and running.")
         elif not self.fpga.is_running():
-            print('WARNING: Fpg process is NOT running. Starting process...')
+            print("WARNING: Fpga is not running. Programming...")
             self.fpga.upload_to_ram_and_program(self.fpgfile)
             if self.fpga.is_running():
-                print('Fpg process is now running.')
+                print("Fpga is now programmed and running.")
             else:
-                raise IOError('Cannot start fpg process.')
+                raise IOError("Cannot program fpga.")
 
 
     def fits_header(self, nspec, coords, coord_sys='ga'):
@@ -105,11 +98,11 @@ class Spectrometer(object):
             ('ga') or equatorial ('eq') coordinate systems.
         Returns:
         - FITS file primary HDU information containing the attributes 
-        of the observation.
+        of the observation and spectrometer.
         """
         # Ensure that a proper coordinate system has been supplied
         if coord_sys != 'ga' and coord_sys != 'eq':
-            raise ValueError('Invalid coordinate system supplied: ' + coord_sys)
+            raise ValueError("Invalid coordinate system supplied: " + coord_sys)
         # Set times
         obs_start_unix = time.time() #unix time
         unix_object = Time(obs_start_unix, format='unix', location=(ugradio.leo.lon, ugradio.leo.lat, ugradio.leo.alt)) #unix time Time object
@@ -175,51 +168,28 @@ class Spectrometer(object):
         
         # Program fpga
         self.fpga.upload_to_ram_and_program(self.fpgfile)
+        self.s.fpga.upload_to_ram_and_program(self.fpgfile)
         if not self.fpga.is_running():
             raise IOError('Could not program fpga.')
-
-        # Initialize ADC and Synth, then reset
-        self.adc.init(self.samp_rate, self.nchan)
-        # snapfeng.initialize_adc(self.samp_rate, self.nchan)
-
-        # Initialize Sync
-        self.s.sync.initialize()
-        self.s.sync.arm_sync()
-
-        # Initialize Noise
-        self.s.noise.initialize()
-
-        # Initialize Input
-        self.s.input.initialize() # Switch to ADCs. Begin computing stats.
-
-        # Initialize Delay
-        self.s.delay.initialize() # Initialize all delays to 0
-
-        # Initialize Pfb
-        self.s.pfb.initialize(fft_shift=self.fft_shift) # or keep default???
-
-        # Initialize PhaseSwitch
-        self.s.phase_switch.initialize()
-
-        # Initialize Eq
-        self.s.eq.initialize()
-
-        # Initialize Channel Order
-        self.s.reorder.initialize()
-
-        # Initialize Packetizer
-        self.s.packetizer.initialize()
-
-        # Initialize Rotator
-        self.rotator.initialize()
-
-        # Initialize Correlator
-        self.corr.initialize()
-
-
-        # Sync pulse lets the spectrometer know when to start
-        # for i in (0,1,0):
-        #     self.fpga.write_int('sync_arm', i)
+        if not self.s.is_programmed():
+            raise IOError('Could program fpga.')
+        
+        # Initialize and align ADCs
+        try:
+            self.s.adc.init()
+            self.s.align_adc()
+        except:
+            try:
+                self.s.adc.init()
+                self.s.align_adc()
+            except:
+                raise IOError("Could not align and initialize ADCs.")
+        try:
+            self.s.initialize()
+        except:
+            self.s.pfb.initialize()
+            self.s.corr_0.initialize()
+            self.s.corr_1.initialize()
 
         print('Spectrometer is ready.')
 ##############################################################
@@ -252,7 +222,7 @@ class Spectrometer(object):
     def read_bram(self, bram_name):
         """
         Reads out data from a SNAP BRAM. The data is stored in the SNAP
-        as 32-bit fixed point numbers with the binary poiunt at the 
+        as 32-bit fixed point numbers with the binary point at the 
         30th bit.
 
         Inputs:
@@ -321,7 +291,7 @@ class Spectrometer(object):
                 for i in range(3):
                     pol1, pol2 = pols[i]
                     spec = self.s.corr.get_new_corr(pol1 , pol2)
-                    spectra = map(self.fpga.read(), bram_devices, SIZE)
+                    spectra = map(self.fpga.read(), bram_devices[i], SIZE)
 
             except RuntimeError:
                 print('WARNING: Cannot reach the SNAP. Skipping integration.')
@@ -332,13 +302,13 @@ class Spectrometer(object):
             fcols = map(self.make_fits_cols(), bram_names, spectra)
             hdulist.append(fits.BinTableHDU.from_columns(fcols))
 
-            # Add the accumulation date in several formats to the header
-            unix_spec = Time(spec_date, format='unix', location=(ugradio.leo.lon, ugradio.leo.lat, ugradio.leo.alt))
-            julian_date_spec = unix_spec.jd
-            utc_spec = time.asctime(time.gmtime(spec_date))
-            hdulist[-1].header['JD'] = (julian_date_spec, 'Julian date of observation.')
-            hdulist[-1].header['UTC'] = (utc_spec, 'UTC time of observation.')
-            hdulist[-1].header['UNIX TIME'] = (spec_date, 'Seconds since epoch.')
+            # # Add the accumulation date in several formats to the header
+            # unix_spec = Time(spec_date, format='unix', location=(ugradio.leo.lon, ugradio.leo.lat, ugradio.leo.alt))
+            # julian_date_spec = unix_spec.jd
+            # utc_spec = time.asctime(time.gmtime(spec_date))
+            # hdulist[-1].header['JD'] = (julian_date_spec, 'Julian date of observation.')
+            # hdulist[-1].header['UTC'] = (utc_spec, 'UTC time of observation.')
+            # hdulist[-1].header['UNIX TIME'] = (spec_date, 'Seconds since epoch.')
 
             ninteg += 1
             integ_time = ninteg*self.int_time
