@@ -167,29 +167,30 @@ class Spectrometer(object):
 
     def initialize_spec(self):
         """
-        Starts the fpg process on the SNAP and initializes the 
-        spectrometer.
+        Programs the fpga on the SNAP and initializes the spectrometer.
         """
         print('Starting the spectrometer...')
         
         # Program fpga
-        self.fpga.upload_to_ram_and_program(self.fpgfile)
-        self.s.fpga.upload_to_ram_and_program(self.fpgfile)
-        if not self.fpga.is_running():
-            raise IOError('Could not program fpga.')
-        if not self.s.is_programmed():
-            raise IOError('Could program fpga.')
+        self.check_connection()
+        self.check_running()
         
         # Initialize and align ADCs
+        print("Aligning and initializing ADCs...")
         try:
             self.s.adc.init()
             self.s.align_adc()
+            print("ADCs aligned and initialized.")
         except:
-            try:
+            try: # try again (usually works after two attempts)
                 self.s.adc.init()
                 self.s.align_adc()
+                print("ADCs aligned and initialized.")
             except:
                 raise IOError("Could not align and initialize ADCs.")
+        
+        # Initialize other blocks and both correlators
+        print("Initializing other blocks, including PFB and both correlators...")
         try:
             self.s.initialize()
         except:
@@ -198,6 +199,7 @@ class Spectrometer(object):
             self.s.corr_1.initialize()
 
         print('Spectrometer is ready.')
+        
 ##############################################################
 
     # NEEDS A LOT OF WORK
