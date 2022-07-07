@@ -139,6 +139,10 @@ class Spectrometer(object):
         # header['ACCLEN'] = (self.acc_len, "Number of clock cycles")
         # header['INTTIME'] = (self.int_time, "Integration time of spectra")
         # header['SCALE'] = (self.scale, "Average instead of sum on SNAP")
+        # header['PYTHON'] = (PYTHON_VERSION, "Python version")
+        # header['SRC'] = (SRC_CODE, "Source code")
+        # header['CASPERFPGA'] = (CASPERFPGA_VERSION, "casperfpga code used")
+        # header['HERA_CORR_F'] = (HERA_CORR_F_VERSION, "hera_corr_f code used")
 
         header['L'] = (l.value, "Galactic longitude [deg]")
         header['B'] = (b.value, "Galactic latitude [deg]")
