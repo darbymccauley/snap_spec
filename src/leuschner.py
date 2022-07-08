@@ -281,9 +281,11 @@ class Spectrometer(object):
         if not self.s.fpga.is_running():
             self.initialize()
 
-        # Assign BRAM device names
+        # Make FITS file
+        hdulist = fits.HDUList()
+
+        # Name data columns
         data_names = ['auto0_real', 'auto1_real', 'cross_real', 'cross_imag']
-        # bram_devices = map(lambda name: 'spec_' + name, bram_names)
 
         # Create a primary FITS HDU for a table file
         hdulist = [self.fits_header(nspec, coords, coord_sys)]
@@ -292,44 +294,36 @@ class Spectrometer(object):
         print('Reading', nspec, 'spectra from the SNAP.')
         ninteg = 0
         while ninteg < nspec:
-            # Update the counter and read the spectra from the SNAP
-            # spec_date = self.poll()
+            cols = []
             pols = [0,0], [1,1], [0,1] # Polarizations for auto0, auto1, cross
             try:
-                auto0 = self.s.corr_0.get_new_corr(*pols[0])
-                auto0_real = auto0.real
-                auto1 = self.s.corr_1.get_new_corr(*pols[1])
-                auto1_real = auto1.real
-                cross = self.s.corr_0.get_new_corr(*pols[2])
-                cross_real = cross.real
-                cross_imag = cross.imag
+                auto0 = self.s.corr_0.get_new_corr(0,0)
+                auto1 = self.s.corr_1.get_new_corr(1,1)
+                auto0_real, auto1_real = auto0.real, auto1.real
+                cross = self.s.corr_0.get_new_corr(0,1)
+                cross_real, cross_imag = cross.real, cross.imag
                 spectra = [auto0_real, auto1_real, cross_real, cross_imag]
+                for i in range(len(data_names)):
+                    cols.append(fits.Column(name=data_names[i], format='D', array=spectra[i]))
 
             except RuntimeError:
                 print('WARNING: Cannot reach the SNAP. Skipping integration.')
                 self.fpga.connect()
                 continue
 
-            # Create FITS columns with the data
-            fcols = map(self.make_fits_cols(), data_names, spectra)
-            hdulist.append(fits.BinTableHDU.from_columns(fcols))
-
-            # # Add the accumulation date in several formats to the header
-            # unix_spec = Time(spec_date, format='unix', location=(ugradio.leo.lon, ugradio.leo.lat, ugradio.leo.alt))
-            # julian_date_spec = unix_spec.jd
-            # utc_spec = time.asctime(time.gmtime(spec_date))
-            # hdulist[-1].header['JD'] = (julian_date_spec, 'Julian date of observation.')
-            # hdulist[-1].header['UTC'] = (utc_spec, 'UTC time of observation.')
-            # hdulist[-1].header['UNIX TIME'] = (spec_date, 'Seconds since epoch.')
-
+            # Add header and data to FITS
+            hdulist.append(self.fits_header(nspec, coords, coord_sys))
+            hdulist.append(fits.BinTableHDU.from_columns(cols, name='CORR_DATA'))
+            
+            # Add to counter
             ninteg += 1
             # integ_time = ninteg*self.int_time
             print('Integration count:', ninteg) #, '(' + str(integ_time), 's)')
 
         # Save the output file
         print('Saving spectra to output file:', filename)
-        fits.HDUList(hdulist).writeto(filename, overwrite=True)
-
+        hdulist.writeto(filename+".fits", overwrite=True)
+        hdulist.close()
 
     # DON'T KNOW ABOUT THESE NEXT THREE FUNCTIONS
     def reconnect(self):
