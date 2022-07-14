@@ -15,8 +15,25 @@ class Fits(object):
     Create the observation FITS file wherein observation data will be
     stored.
     """
-    # def __init__(self):
-    #     # Bunch of constants
+    def __init__(self):
+        """
+        Fits interface.
+        """
+        # Spectrometer meta data that will be stored to FITS PrimaryHDU
+        # self.scale = 0
+        # # self.adc_rate = 500e6
+        # self.downsample = 1<<3
+        # self.bandwidth = 250e6
+        # self.samp_rate = self.bandwidth*2
+        # self.nchan = 1<<13
+        # self.resolution = self.bandwidth/self.nchan
+        # self.fft_shift = 1<<14
+        # self.acc_len = 1<<27
+        # self.clock_rate = self.downsample*self.samp_rate # or 10 MHz?
+        # self.int_time = self.acc_len/self.clock_rate
+
+
+
 
     def make_PrimaryHDU(self, nspec, coords, coord_sys='ga'):
         """
