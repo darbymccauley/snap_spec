@@ -1,7 +1,8 @@
 import numpy as np
 import sys 
 import os
-sys.path.append(os.path.abspath('../src'))
+cwd = os.getcwd()
+sys.path.append(os.path.abspath(cwd+'/src'))
 from leuschner import Spectrometer
 
 # Open IPython to continue session as desired
