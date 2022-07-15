@@ -29,7 +29,7 @@ class Spectrometer(object):
         self.fpgfile = 'fpga/ugradio_corrspec_2022-02-22_0905.fpg'
 
         if logger is None:
-            self.logger = 'log/spectrometer.log'
+            self.logger = 'spectrometer.log'
         elif logger is not None:
             self.logger = logger
         logging.basicConfig(filename=self.logger, 
@@ -55,7 +55,6 @@ class Spectrometer(object):
 
 
         self.fpga = casperfpga.CasperFpga(self.host)
-        self.adc = casperfpga.snapadc.SNAPADC(self.fpga) # 10 MHz reference signal default       
         self.s = SnapFengine(self.host, transport='default')
 
         
@@ -95,8 +94,8 @@ class Spectrometer(object):
         logging.info('Starting the spectrometer.')
         
         # Program fpga
-        self.check_connection()
-        self.check_running()
+        if not self.is_running():
+            self.program()
         
         # Initialize and align ADCs
         logging.info('Aligning and initializing ADCs...')
@@ -225,15 +224,15 @@ class Spectrometer(object):
         hdulist = fits.HDUList(hdus=[primaryhdu])
 
         # Read some number of spectra to a FITS file
-        logging.info('Reading', nspec, 'spectra from the SNAP.')
+        #logging.info('Reading', nspec, 'spectra from the SNAP.')
         ninteg = 0
         while ninteg < nspec:
             spectra = [('auto0_real', (self.stream_1, self.stream_1)), # (0, 0)
                        ('auto1_real', (self.stream_2, self.stream_2)), # (1, 1)
                        ('cross', (self.stream_1, self.stream_2)),      # (0, 1)
                        ]
+            data_list = []
             for name, (stream_1, stream_2) in spectra:
-                data_list = []
                 if name == 'auto0_real':
                     auto0_real = self.s.corr_0.get_new_corr(stream_1, stream_2).real
                     data_list.append(fits.Column(name=name, format='D', array=auto0_real))
@@ -251,7 +250,7 @@ class Spectrometer(object):
             ninteg += 1    
             
         # Save the output file
-        logging.info('Saving output file to', filename)
+        #logging.info('Saving output file to', filename)
         hdulist.writeto(filename, overwrite=True)
         hdulist.close()
 
