@@ -9,6 +9,7 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 from astropy.time import Time
 from astropy.io import fits
+import os, sys
 
 
 # Create Spectrometer class
@@ -94,8 +95,7 @@ class Spectrometer(object):
         logging.info('Starting the spectrometer.')
         
         # Program fpga
-        if not self.is_running():
-            self.program()
+        self.program()
         
         # Initialize and align ADCs
         logging.info('Aligning and initializing ADCs...')
@@ -232,22 +232,36 @@ class Spectrometer(object):
                        ('cross', (self.stream_1, self.stream_2)),      # (0, 1)
                        ]
             data_list = []
-            for name, (stream_1, stream_2) in spectra:
-                if name == 'auto0_real':
-                    auto0_real = self.s.corr_0.get_new_corr(stream_1, stream_2).real
-                    data_list.append(fits.Column(name=name, format='D', array=auto0_real))
-                elif name == 'auto1_real':
-                    auto1_real = self.s.corr_1.get_new_corr(stream_1, stream_2).real
-                    data_list.append(fits.Column(name=name, format='D', array=auto1_real))
-                elif name == 'cross':
-                    cross = self.s.corr_0.get_new_corr(stream_1, stream_2)
-                    cross_real, cross_imag = cross.real, cross.imag
-                    data_list.append(fits.Column(name=name+'_real', format='D', array=cross_real))
-                    data_list.append(fits.Column(name=name+'_imag', format='D', array=cross_imag))
-                
-            bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
-            hdulist.append(bintablehdu)
-            ninteg += 1    
+            cnt_0 = self.s.corr_0.read('acc_cnt', 4)
+            cnt_1 = self.s.corr_1.read('acc_cnt', 4)
+            if int.from_bytes(cnt_0, sys.byteorder)  == int.from_bytes(cnt_0, sys.byteorder)+1:
+                for name, (stream_1, stream_2) in spectra:
+                    if name == 'auto0_real':
+                        auto0_real = self.s.corr_0.get_new_corr(stream_1, stream_2).real
+                        #data_list.append(fits.Column(name=name, format='D', array=auto0_real))
+                    elif name == 'auto1_real':
+                        auto1_real = self.s.corr_1.get_new_corr(stream_1, stream_2).real
+                        #data_list.append(fits.Column(name=name, format='D', array=auto1_real))
+                    elif name == 'cross':
+                        cross = self.s.corr_0.get_new_corr(stream_1, stream_2)
+                        cross_real, cross_imag = cross.real, cross.imag
+                         #data_list.append(fits.Column(name=name+'_real', format='D', array=cross_real))
+                         #data_list.append(fits.Column(name=name+'_imag', format='D', array=cross_imag))
+                if cnt_0 == cnt_1:
+                    data_list.append(fits.Column(name='auto0_real', format='D', array=auto0_real))
+                    data_list.append(fits.Column(name='auto1_real', format='D', array=auto1_real))
+                    data_list.append(fits.Column(name='cross_real', format='D', array=cross_real))
+                    data_list.append(fits.Column(name='cross_imag', format='D', array=cross_imag))
+
+                    bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
+                    hdulist.append(bintablehdu)
+                    ninteg += 1
+            else:
+                time.sleep(0.1)
+ 
+            #bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
+            #hdulist.append(bintablehdu)
+            #ninteg += 1    
             
         # Save the output file
         #logging.info('Saving output file to', filename)
