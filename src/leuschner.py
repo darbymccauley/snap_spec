@@ -200,9 +200,9 @@ class Spectrometer(object):
 
     def read_spec(self, filename, nspec, coords, coord_sys='ga'):
         """
-        Recieves data from the Leuschner spectrometer and saves it to a
-        FITS file. The primary HDU contains information about the
-        observation (coordinates, number of spectra collected, time,
+        Recieves spectrometer data from the Leuschner spectrometer and 
+        saves it to a FITS file. The primary HDU contains information about
+        the observation (coordinates, number of spectra collected, time,
         etc.) and spectrometer attributes used. Each set of spectra is
         stored in its own FITS table in the FITS file. The columns in
         each FITS table are ''auto0_real'', ''auto1_real'',
@@ -218,13 +218,67 @@ class Spectrometer(object):
             Default is galactic coordinates. Takes in either galactic 
             ('ga') or equatorial ('eq') coordinate systems.
         Returns:
-        - FITS file with collected spectrometer data.
+        - FITS file with autocorrelated spectrometer data.
         """
         primaryhdu = self.make_PrimaryHDU(nspec, coords, coord_sys)
         hdulist = fits.HDUList(hdus=[primaryhdu])
 
         # Read some number of spectra to a FITS file
-        #logging.info('Reading', nspec, 'spectra from the SNAP.')
+        ninteg = 0
+        while ninteg < nspec:
+            spectra = [('auto0_real', (self.stream_1, self.stream_1)), # (0, 0)
+                       ('auto1_real', (self.stream_2, self.stream_2))] # (1, 1)
+            data_list = []
+            # Read current count on corr registers
+            cnt_0 = self.s.corr_0.read('acc_cnt', 4)
+            cnt_1 = self.s.corr_1.read('acc_cnt', 4)
+            if int.from_bytes(cnt_0, sys.byteorder) == int.from_bytes(cnt_0, sys.byteorder)+1: # if count increased
+                for name, (stream_1, stream_2) in spectra: # read the spectra
+                    if name == 'auto0_real':
+                        auto0_real = self.s.corr_0.get_new_corr(stream_1, stream_2).real
+                    elif name == 'auto1_real':
+                        auto1_real = self.s.corr_1.get_new_corr(stream_1, stream_2).real
+                if cnt_0 == cnt_1: # if both corrs share same count number
+                    data_list.append(fits.Column(name='auto0_real', format='D', array=auto0_real))
+                    data_list.append(fits.Column(name='auto1_real', format='D', array=auto1_real))
+
+                    bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
+                    hdulist.append(bintablehdu) # append to fits file
+                    ninteg += 1 # add to counter
+            else: # if count did not increase by 1 then wait and check again
+                time.sleep(0.1)  
+            
+        # Save the output file
+        hdulist.writeto(filename, overwrite=True)
+        hdulist.close()
+
+
+    def read_corr(self, filename, nspec, coords, coord_sys='ga'):
+        """
+        Recieves correlation data from the Leuschner spectrometer and 
+        saves it to a FITS file. The primary HDU contains information about
+        the observation (coordinates, number of spectra collected, time,
+        etc.) and spectrometer attributes used. Each set of spectra is
+        stored in its own FITS table in the FITS file. The columns in
+        each FITS table are ''auto0_real'', ''auto1_real'',
+        ''cross_real'', and ''cross_imag''. All columns contain
+        double-precision floating-point numbers.
+
+        Inputs:
+        - filename: Name of the output FITs file.
+        - nspec: Number of spectra to collect.
+        - coords: Coordinate(s) of the target.
+            Format: (l/ra, b/dec)
+        - coord_sys: Coordinate system used for ''coords''.
+            Default is galactic coordinates. Takes in either galactic 
+            ('ga') or equatorial ('eq') coordinate systems.
+        Returns:
+        - FITS file with correlated spectrometer data.
+        """
+        primaryhdu = self.make_PrimaryHDU(nspec, coords, coord_sys)
+        hdulist = fits.HDUList(hdus=[primaryhdu])
+
+        # Read some number of spectra to a FITS file
         ninteg = 0
         while ninteg < nspec:
             spectra = [('auto0_real', (self.stream_1, self.stream_1)), # (0, 0)
