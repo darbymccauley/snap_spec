@@ -244,7 +244,7 @@ class Spectrometer(object):
 
                     bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
                     hdulist.append(bintablehdu) # append to fits file
-                    ninteg += 1 # add to counter
+                    ninteg += 1
             else: # if count did not increase by 1 then wait and check again
                 time.sleep(0.1)  
             
@@ -281,44 +281,19 @@ class Spectrometer(object):
         # Read some number of spectra to a FITS file
         ninteg = 0
         while ninteg < nspec:
-            spectra = [('auto0_real', (self.stream_1, self.stream_1)), # (0, 0)
-                       ('auto1_real', (self.stream_2, self.stream_2)), # (1, 1)
-                       ('cross', (self.stream_1, self.stream_2)),      # (0, 1)
-                       ]
+            spectra = ['cross', (self.stream_1, self.stream_2)] # (0, 1)
             data_list = []
-            cnt_0 = self.s.corr_0.read('acc_cnt', 4)
-            cnt_1 = self.s.corr_1.read('acc_cnt', 4)
-            if int.from_bytes(cnt_0, sys.byteorder)  == int.from_bytes(cnt_0, sys.byteorder)+1:
-                for name, (stream_1, stream_2) in spectra:
-                    if name == 'auto0_real':
-                        auto0_real = self.s.corr_0.get_new_corr(stream_1, stream_2).real
-                        #data_list.append(fits.Column(name=name, format='D', array=auto0_real))
-                    elif name == 'auto1_real':
-                        auto1_real = self.s.corr_1.get_new_corr(stream_1, stream_2).real
-                        #data_list.append(fits.Column(name=name, format='D', array=auto1_real))
-                    elif name == 'cross':
-                        cross = self.s.corr_0.get_new_corr(stream_1, stream_2)
-                        cross_real, cross_imag = cross.real, cross.imag
-                         #data_list.append(fits.Column(name=name+'_real', format='D', array=cross_real))
-                         #data_list.append(fits.Column(name=name+'_imag', format='D', array=cross_imag))
-                if cnt_0 == cnt_1:
-                    data_list.append(fits.Column(name='auto0_real', format='D', array=auto0_real))
-                    data_list.append(fits.Column(name='auto1_real', format='D', array=auto1_real))
-                    data_list.append(fits.Column(name='cross_real', format='D', array=cross_real))
-                    data_list.append(fits.Column(name='cross_imag', format='D', array=cross_imag))
-
-                    bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
-                    hdulist.append(bintablehdu)
-                    ninteg += 1
-            else:
-                time.sleep(0.1)
- 
-            #bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
-            #hdulist.append(bintablehdu)
-            #ninteg += 1    
+            for name, (stream_1, stream_2) in spectra:
+                cross = self.s.corr_0.get_new_corr(stream_1, stream_2)
+                cross_real, cross_imag = cross.real, cross.imag
             
+            data_list.append(fits.Column(name=name+'_real', format='D', array=cross_real))
+            data_list.append(fits.Column(name=name+'_imag', format='D', array=cross_imag))
+
+            bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
+            hdulist.append(bintablehdu)
+            ninteg += 1
+ 
         # Save the output file
-        #logging.info('Saving output file to', filename)
         hdulist.writeto(filename, overwrite=True)
         hdulist.close()
-
