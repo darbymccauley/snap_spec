@@ -281,7 +281,7 @@ class Spectrometer(object):
         # Read some number of spectra to a FITS file
         ninteg = 0
         while ninteg < nspec:
-            spectra = ['cross', (self.stream_1, self.stream_2)] # (0, 1)
+            spectra = [('cross', (self.stream_1, self.stream_2))] # (0, 1)
             data_list = []
             for name, (stream_1, stream_2) in spectra:
                 cross = self.s.corr_0.get_new_corr(stream_1, stream_2)
