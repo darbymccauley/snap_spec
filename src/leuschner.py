@@ -11,6 +11,13 @@ from astropy.time import Time
 from astropy.io import fits
 import os, sys
 
+DELAY_TIME = 0.1 # seconds
+HOST = 'localhost'
+FPGFILE = 'fpga/ugradio_corrspec_2022-02-22_0905.fpg'
+STREAM_1 = 0
+STREAM_2 = 1
+LOGGER = 'spectrometer.log'
+TRANSPORT = 'default'
 
 # Create Spectrometer class
 class Spectrometer(object):
@@ -18,19 +25,23 @@ class Spectrometer(object):
     Casperfpga interface to the SNAP spectrometer.
     """
 
-    def __init__(self, logger=None):
+    def __init__(self, host=HOST, fpgfile=FPGFILE, transport=TRANSPORT, stream_1=STREAM_1, stream_2=STREAM_2, logger=None):
         """
         Create the interface to the SNAP.
 
         Inputs:
+        - host: IP address of SNAP.
+        - fpgfile: design file used to program fpga.
+        - transport: communication protocal.
+        - stream_1, stream_2: SNAP ports used for correlation data aquisition.
         - logger: filename in which log is recorded. 
-            (Format: 'logger_filename.log')
         """
-        self.host = 'localhost'
-        self.fpgfile = 'fpga/ugradio_corrspec_2022-02-22_0905.fpg'
+        self.host = host
+        self.fpgfile = fpgfile
+        self.transport = transport
 
         if logger is None:
-            self.logger = 'spectrometer.log'
+            self.logger = LOGGER
         elif logger is not None:
             self.logger = logger
         logging.basicConfig(filename=self.logger, 
@@ -39,8 +50,8 @@ class Spectrometer(object):
                             level=logging.NOTSET)
 
         # Ports used for ADCs
-        self.stream_1 = 0
-        self.stream_2 = 1
+        self.stream_1 = stream_1
+        self.stream_2 = stream_2
         
         # self.scale = 0
         # # self.adc_rate = 500e6
@@ -54,9 +65,8 @@ class Spectrometer(object):
         # self.clock_rate = self.downsample*self.samp_rate # or 10 MHz?
         # self.int_time = self.acc_len/self.clock_rate
 
-
         self.fpga = casperfpga.CasperFpga(self.host)
-        self.s = SnapFengine(self.host, transport='default')
+        self.s = SnapFengine(self.host, transport=self.transport)
 
         
     def is_connected(self):
@@ -169,6 +179,7 @@ class Spectrometer(object):
         header['NSPEC'] = (nspec, "Number of spectra collected")
         header['FPGFILE'] = (self.fpgfile, "FPGA FPG file")
         header['HOST'] = (self.s.fpga.host, "Host of the FPGA")
+        header['TRANSPORTT'] = (self.transport, "Communication protocal")
         # header['CLK'] = (self.s.fpga.estimate_fpga_clock(), "FPGA clock speed [MHz]")
         # header['ADC'] = (self.adc_rate, "ADC clock speed [Hz]")
         header['ADC_NAME'] = (self.s.adc.adc.name, "Name of ADC")
@@ -220,34 +231,28 @@ class Spectrometer(object):
         Returns:
         - FITS file with autocorrelated spectrometer data.
         """
+        # Make PrimaryHDU for FITS file
         primaryhdu = self.make_PrimaryHDU(nspec, coords, coord_sys)
         hdulist = fits.HDUList(hdus=[primaryhdu])
 
-        # Read some number of spectra to a FITS file
-        ninteg = 0
-        while ninteg < nspec:
-            spectra = [('auto0_real', (self.stream_1, self.stream_1)), # (0, 0)
-                       ('auto1_real', (self.stream_2, self.stream_2))] # (1, 1)
-            data_list = []
-            # Read current count on corr registers
-            cnt_0 = self.s.corr_0.read('acc_cnt', 4)
-            cnt_1 = self.s.corr_1.read('acc_cnt', 4)
-            if int.from_bytes(cnt_0, sys.byteorder) == int.from_bytes(cnt_0, sys.byteorder)+1: # if count increased
-                for name, (stream_1, stream_2) in spectra: # read the spectra
-                    if name == 'auto0_real':
-                        auto0_real = self.s.corr_0.get_new_corr(stream_1, stream_2).real
-                    elif name == 'auto1_real':
-                        auto1_real = self.s.corr_1.get_new_corr(stream_1, stream_2).real
-                if cnt_0 == cnt_1: # if both corrs share same count number
-                    data_list.append(fits.Column(name='auto0_real', format='D', array=auto0_real))
-                    data_list.append(fits.Column(name='auto1_real', format='D', array=auto1_real))
-
-                    bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
-                    hdulist.append(bintablehdu) # append to fits file
-                    ninteg += 1
-            else: # if count did not increase by 1 then wait and check again
-                time.sleep(0.1)  
-            
+        # Define spectra to collect
+        spectra = [('auto0_real', self.s.corr_0, (self.stream_1, self.stream_1)), # (0, 0)
+                   ('auto1_real', self.s.corr_1, (self.stream_2, self.stream_2))] # (1, 1)
+        data = {}
+   
+        cnt_0 = self.s.corr_0.read('acc_len', 4) # Read corr_0 count
+        for ninteg in range(nspec):
+            while self.s.corr_0.read('acc_cnt', 4) == cnt_0: # sleep until corr_0 count increased
+                time.sleep(DELAY_TIME)
+            for name, corr, (stream_1, stream_2) in spectra: # read the spectra from both corrs
+                data[name] = corr.get_new_corr(stream_1, stream_2).real
+            assert cnt_0 + 1 == self.s.corr_1.read('acc_cnt', 4) # assert corr_0's count increased by 1
+            cnt_0 = cnt_0 + 1
+            # Make BinTableHDU and append collected data
+            data_list = [fits.Column(name=name, format='D', array=data[name]) for name, _, _ in spectra]
+            bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
+            hdulist.append(bintablehdu)
+           
         # Save the output file
         hdulist.writeto(filename, overwrite=True)
         hdulist.close()
