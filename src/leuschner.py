@@ -18,6 +18,8 @@ STREAM_1 = 0
 STREAM_2 = 1
 LOGGER = 'spectrometer.log'
 TRANSPORT = 'default'
+ACC_LEN = 38150
+SPEC_PER_ACC = 8
 
 # Create Spectrometer class
 class Spectrometer(object):
@@ -25,7 +27,7 @@ class Spectrometer(object):
     Casperfpga interface to the SNAP spectrometer.
     """
 
-    def __init__(self, host=HOST, fpgfile=FPGFILE, transport=TRANSPORT, stream_1=STREAM_1, stream_2=STREAM_2, logger=None):
+    def __init__(self, host=HOST, fpgfile=FPGFILE, transport=TRANSPORT, stream_1=STREAM_1, stream_2=STREAM_2, logger=None, acc_len=ACC_LEN, spec_per_acc=SPEC_PER_ACC):
         """
         Create the interface to the SNAP.
 
@@ -53,17 +55,8 @@ class Spectrometer(object):
         self.stream_1 = stream_1
         self.stream_2 = stream_2
         
-        # self.scale = 0
-        # # self.adc_rate = 500e6
-        # self.downsample = 1<<3
-        # self.bandwidth = 250e6
-        # self.samp_rate = self.bandwidth*2
-        # self.nchan = 1<<13
-        # self.resolution = self.bandwidth/self.nchan
-        # self.fft_shift = 1<<14
-        # self.acc_len = 1<<27
-        # self.clock_rate = self.downsample*self.samp_rate # or 10 MHz?
-        # self.int_time = self.acc_len/self.clock_rate
+        self.acc_len = acc_len
+        self.spec_per_acc = spec_per_acc
 
         self.fpga = casperfpga.CasperFpga(self.host)
         self.s = SnapFengine(self.host, transport=self.transport)
@@ -106,6 +99,9 @@ class Spectrometer(object):
         
         # Program fpga
         self.program()
+
+        self.s.corr_0.set_acc_len(self.acc_len)
+        self.s.corr_1.set_acc_len(self.acc_len)
         
         # Initialize and align ADCs
         logging.info('Aligning and initializing ADCs...')
@@ -179,7 +175,7 @@ class Spectrometer(object):
         header['NSPEC'] = (nspec, "Number of spectra collected")
         header['FPGFILE'] = (self.fpgfile, "FPGA FPG file")
         header['HOST'] = (self.s.fpga.host, "Host of the FPGA")
-        header['TRANSPORTT'] = (self.transport, "Communication protocal")
+        header['TRANSPORT'] = (self.transport, "Communication protocal")
         # header['CLK'] = (self.s.fpga.estimate_fpga_clock(), "FPGA clock speed [MHz]")
         # header['ADC'] = (self.adc_rate, "ADC clock speed [Hz]")
         header['ADC_NAME'] = (self.s.adc.adc.name, "Name of ADC")
@@ -207,6 +203,22 @@ class Spectrometer(object):
 
         primaryhdu = fits.PrimaryHDU(header=header)
         return primaryhdu
+
+
+    def wait_for_cnt(self):
+        cnt_0 = self.s.corr_0.read_uint('acc_cnt')
+        while self.s.corr_0.read_uint('acc_cnt') < (cnt_0+1):
+            time.sleep(0.1)
+        return cnt_0
+
+
+    def get_new_corr(self, corr, pol1, pol2):
+        corr.set_input(pol1, pol2)
+        spec = corr.read_bram(flush_vacc=False)/float(self.acc_len*self.spec_per_acc)
+        if pol1 == pol2:
+            return spec.real + 1j*np.zeros(len(spec))
+        else:
+            return spec
 
 
     def read_spec(self, filename, nspec, coords, coord_sys='ga'):
@@ -239,15 +251,14 @@ class Spectrometer(object):
         spectra = [('auto0_real', self.s.corr_0, (self.stream_1, self.stream_1)), # (0, 0)
                    ('auto1_real', self.s.corr_1, (self.stream_2, self.stream_2))] # (1, 1)
         data = {}
-   
-        cnt_0 = self.s.corr_0.read('acc_len', 4) # Read corr_0 count
+        
         for ninteg in range(nspec):
-            while self.s.corr_0.read('acc_cnt', 4) == cnt_0: # sleep until corr_0 count increased
-                time.sleep(DELAY_TIME)
+            cnt_0 = self.wait_for_cnt()
             for name, corr, (stream_1, stream_2) in spectra: # read the spectra from both corrs
-                data[name] = corr.get_new_corr(stream_1, stream_2).real
-            assert cnt_0 + 1 == self.s.corr_1.read('acc_cnt', 4) # assert corr_0's count increased by 1
-            cnt_0 = cnt_0 + 1
+                data[name] = self.get_new_corr(corr, stream_1, stream_2).real
+            cnt_1 = self.s.corr_1.read_uint('acc_cnt')
+            assert cnt_0 + 1 == cnt_1 # assert corr_0's count increased and matches corr_1's count
+
             # Make BinTableHDU and append collected data
             data_list = [fits.Column(name=name, format='D', array=data[name]) for name, _, _ in spectra]
             bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
