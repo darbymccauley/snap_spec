@@ -206,6 +206,9 @@ class Spectrometer(object):
 
 
     def wait_for_cnt(self):
+        """
+        Waits for corr_0 acc_cnt to increase by 1. Returns the count read from the register.
+        """
         cnt_0 = self.s.corr_0.read_uint('acc_cnt')
         while self.s.corr_0.read_uint('acc_cnt') < (cnt_0+1):
             time.sleep(0.1)
@@ -213,6 +216,16 @@ class Spectrometer(object):
 
 
     def get_new_corr(self, corr, pol1, pol2):
+        """
+        Reads and returns the spectra collected given a set of polarizations.
+
+        Inputs:
+        - corr: which correlator to use
+        - pol1: first polarization
+        - pol2: second polarization
+
+        Returns: correlated data, either auto or cross depending on choice of pol1 and pol2.
+        """
         corr.set_input(pol1, pol2)
         spec = corr.read_bram(flush_vacc=False)/float(self.acc_len*self.spec_per_acc)
         if pol1 == pol2:
