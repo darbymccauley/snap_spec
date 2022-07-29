@@ -9,7 +9,7 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 from astropy.time import Time
 from astropy.io import fits
-import os, sys
+
 
 DELAY_TIME = 0.1 # seconds
 HOST = 'localhost'
@@ -49,7 +49,7 @@ class Spectrometer(object):
         logging.basicConfig(filename=self.logger, 
                             format='%(asctime)s - %(levelname)s - %(message)s', 
                             datefmt='%m/%d/%Y %I:%M:%S %p',
-                            level=logging.NOTSET)
+                            level=logging.WARNING)
 
         # Ports used for ADCs
         self.stream_1 = stream_1
@@ -95,7 +95,7 @@ class Spectrometer(object):
         """
         Programs the fpga on the SNAP and initializes the spectrometer.
         """
-        logging.info('Starting the spectrometer.')
+        # logging.info('Starting the spectrometer.')
         
         # Program fpga
         self.program()
@@ -104,29 +104,19 @@ class Spectrometer(object):
         self.s.corr_1.set_acc_len(self.acc_len)
         
         # Initialize and align ADCs
-        logging.info('Aligning and initializing ADCs...')
-        try:
+        # logging.info('Aligning and initializing ADCs...')
+        while self.s.adc_is_configured() == 0:
             self.s.adc.init()
-            self.s.align_adc()
-            logging.info('ADCs aligned and initialized.')
-        except: ### No bare excepts
-            try: # try again (usually works after two attempts)
-                self.s.adc.init()
-                self.s.align_adc()
-                logging.info('ADCs aligned and initialized.')
-            except:
-                logging.error('Could not align and initialize ADCs.')
-                raise IOError('Could not align and initialize ADCs.')
+            self.s.align_adc()        
 
         # Initialize other blocks and both correlators
-        logging.info('Initializing other blocks, including PFB and both correlators.')
         try:
             self.s.initialize()
-        except:
+        except UnicodeDecodeError: # XXX address this issue later with Aaron
             self.s.pfb.initialize()
             self.s.corr_0.initialize()
             self.s.corr_1.initialize()
-        logging.info('Spectrometer is ready.')
+        logging.info('Spectrometer initialized.')
 
 
     def make_PrimaryHDU(self, nspec, coords, coord_sys='ga'):
@@ -175,19 +165,13 @@ class Spectrometer(object):
         header['NSPEC'] = (nspec, "Number of spectra collected")
         header['FPGFILE'] = (self.fpgfile, "FPGA FPG file")
         header['HOST'] = (self.s.fpga.host, "Host of the FPGA")
-        header['TRANSPORT'] = (self.transport, "Communication protocal")
-        # header['CLK'] = (self.s.fpga.estimate_fpga_clock(), "FPGA clock speed [MHz]")
-        # header['ADC'] = (self.adc_rate, "ADC clock speed [Hz]")
-        header['ADC_NAME'] = (self.s.adc.adc.name, "Name of ADC")
-        # header['DOWNSAMPLE'] = (self.downsample, "ADC downsampling period")
-        # header['SAMPRATE'] = (self.samp_rate, "Downsampled clock speed [Hz]")
-        # header['BW'] = (self.bandwidth, "Bandwidth of spectra [Hz]")
-        # header['NCHAN'] = (self.nchan, "Number of frequency channels")
-        # header['RES'] = (self.resolution, "Frequency resolution [Hz]")
-        # header['FFTSHIFT'] = (self.fft_shift, "FFT shifting instructions")
-        # header['ACCLEN'] = (self.acc_len, "Number of clock cycles")
-        # header['INTTIME'] = (self.int_time, "Integration time of spectra")
-        # header['SCALE'] = (self.scale, "Average instead of sum on SNAP")
+        header['TRANSP'] = (self.transport, "Communication protocal (transport)")
+        header['ACCLEN'] = (self.acc_len, "Number of clock cycles")
+        header['SPEC/ACC'] = (self.spec_per_acc, "Spectra per accumulation")
+        header['STREAM_1'] = (self.stream_1, "First ADC port used")
+        header['STREAM_2'] = (self.stream_2, "Second ADC port used")
+        header['LOGGER'] = (self.logger, "Logger")
+
         header['PYTHON'] = (3.8, "Python version")
         header['SRC'] = ('https://github.com/darbymccauley/Leuschner_Spectrometer.git', "Source code")
         # header['CASPERFPGA'] = (CASPERFPGA_VERSION, "casperfpga code used")
@@ -206,6 +190,9 @@ class Spectrometer(object):
 
 
     def wait_for_cnt(self):
+        """
+        Waits for corr_0 acc_cnt to increase by 1. Returns the count read from the register.
+        """
         cnt_0 = self.s.corr_0.read_uint('acc_cnt')
         while self.s.corr_0.read_uint('acc_cnt') < (cnt_0+1):
             time.sleep(0.1)
@@ -213,6 +200,16 @@ class Spectrometer(object):
 
 
     def get_new_corr(self, corr, pol1, pol2):
+        """
+        Reads and returns the spectra collected given a set of polarizations.
+
+        Inputs:
+        - corr: which correlator to use
+        - pol1: first polarization
+        - pol2: second polarization
+
+        Returns: correlated data, either auto or cross depending on choice of pol1 and pol2.
+        """
         corr.set_input(pol1, pol2)
         spec = corr.read_bram(flush_vacc=False)/float(self.acc_len*self.spec_per_acc)
         if pol1 == pol2:

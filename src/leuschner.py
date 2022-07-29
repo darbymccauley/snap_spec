@@ -105,24 +105,14 @@ class Spectrometer(object):
         
         # Initialize and align ADCs
         # logging.info('Aligning and initializing ADCs...')
-        try:
+        while self.s.adc_is_configured() == 0:
             self.s.adc.init()
-            self.s.align_adc()
-            # logging.info('ADCs aligned and initialized.')
-        except: ### No bare excepts
-            try: # try again (usually works after two attempts)
-                self.s.adc.init()
-                self.s.align_adc()
-                # logging.info('ADCs aligned and initialized.')
-            except:
-                logging.error('Could not align and initialize ADCs.')
-                raise IOError('Could not align and initialize ADCs.')
+            self.s.align_adc()        
 
         # Initialize other blocks and both correlators
-        # logging.info('Initializing other blocks, including PFB and both correlators.')
         try:
             self.s.initialize()
-        except:
+        except UnicodeDecodeError: # XXX address this issue later with Aaron
             self.s.pfb.initialize()
             self.s.corr_0.initialize()
             self.s.corr_1.initialize()
