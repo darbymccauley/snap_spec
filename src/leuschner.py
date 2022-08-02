@@ -81,6 +81,7 @@ class Spectrometer(object):
             return True
         else:
             logging.warning('SNAP is not programmed and running.')
+            return False
 
   
     def program(self):
@@ -95,7 +96,7 @@ class Spectrometer(object):
         """
         Programs the fpga on the SNAP and initializes the spectrometer.
         """
-        # logging.info('Starting the spectrometer.')
+        logging.info('Initializing the spectrometer...')
         
         # Program fpga
         self.program()
@@ -104,7 +105,6 @@ class Spectrometer(object):
         self.s.corr_1.set_acc_len(self.acc_len)
         
         # Initialize and align ADCs
-        # logging.info('Aligning and initializing ADCs...')
         while self.s.adc_is_configured() == 0:
             self.s.adc.init()
             self.s.align_adc()        
@@ -162,28 +162,28 @@ class Spectrometer(object):
         header = fits.Header()
 
         # Save metadata of the system and spectrometer
-        header['NSPEC'] = (nspec, "Number of spectra collected")
-        header['FPGFILE'] = (self.fpgfile, "FPGA FPG file")
-        header['HOST'] = (self.s.fpga.host, "Host of the FPGA")
-        header['TRANSP'] = (self.transport, "Communication protocal (transport)")
-        header['ACCLEN'] = (self.acc_len, "Number of clock cycles")
-        header['SPEC/ACC'] = (self.spec_per_acc, "Spectra per accumulation")
-        header['STREAM_1'] = (self.stream_1, "First ADC port used")
-        header['STREAM_2'] = (self.stream_2, "Second ADC port used")
-        header['LOGGER'] = (self.logger, "Logger")
+        header['NSPEC'] = (nspec, 'Number of spectra collected')
+        header['FPGFILE'] = (self.fpgfile, 'FPGA FPG file')
+        header['HOST'] = (self.s.fpga.host, 'Host of the FPGA')
+        header['TRANSP'] = (self.transport, 'Communication protocal (transport)')
+        header['ACCLEN'] = (self.acc_len, 'Number of clock cycles')
+        header['SPEC/ACC'] = (self.spec_per_acc, 'Spectra per accumulation')
+        header['STREAM_1'] = (self.stream_1, 'First ADC port used')
+        header['STREAM_2'] = (self.stream_2, 'Second ADC port used')
+        header['LOGGER'] = (self.logger, 'Logger file')
 
-        header['PYTHON'] = (3.8, "Python version")
-        header['SRC'] = ('https://github.com/darbymccauley/Leuschner_Spectrometer.git', "Source code")
+        header['PYTHON'] = (3.8, 'Python version')
+        header['SRC'] = ('https://github.com/darbymccauley/Leuschner_Spectrometer.git', 'Source code')
         # header['CASPERFPGA'] = (CASPERFPGA_VERSION, "casperfpga code used")
         # header['HERA_CORR_F'] = (HERA_CORR_F_VERSION, "hera_corr_f code used")
         
         # Save observation attributes
-        header['L'] = (l.value, "Galactic longitude [deg]")
-        header['B'] = (b.value, "Galactic latitude [deg]")
-        header['RA'] = (ra.value, "Right Ascension [deg]")
-        header['DEC'] = (dec.value, "Declination [deg]")
-        header['JD'] = (obs_start_jd, "Julian date of start time")
-        header['UNIX'] = (obs_start_unix, "Seconds since epoch")
+        header['L'] = (l.value, 'Galactic longitude [deg]')
+        header['B'] = (b.value, 'Galactic latitude [deg]')
+        header['RA'] = (ra.value, 'Right Ascension [deg]')
+        header['DEC'] = (dec.value, 'Declination [deg]')
+        header['JD'] = (obs_start_jd, 'Julian date of start time')
+        header['UNIX'] = (obs_start_unix, 'Seconds since epoch')
 
         primaryhdu = fits.PrimaryHDU(header=header)
         return primaryhdu
@@ -191,7 +191,9 @@ class Spectrometer(object):
 
     def wait_for_cnt(self):
         """
-        Waits for corr_0 acc_cnt to increase by 1. Returns the count read from the register.
+        Waits for corr_0 acc_cnt to increase by 1. 
+        Returns the count read from the register.
+        (Sourced with modifications from hera_corr_f.)
         """
         cnt_0 = self.s.corr_0.read_uint('acc_cnt')
         while self.s.corr_0.read_uint('acc_cnt') < (cnt_0+1):
@@ -209,6 +211,8 @@ class Spectrometer(object):
         - pol2: second polarization
 
         Returns: correlated data, either auto or cross depending on choice of pol1 and pol2.
+
+        (Sourced with modifications from hera_corr_f.)
         """
         corr.set_input(pol1, pol2)
         spec = corr.read_bram(flush_vacc=False)/float(self.acc_len*self.spec_per_acc)
@@ -225,8 +229,8 @@ class Spectrometer(object):
         the observation (coordinates, number of spectra collected, time,
         etc.) and spectrometer attributes used. Each set of spectra is
         stored in its own FITS table in the FITS file. The columns in
-        each FITS table are ''auto0_real'', ''auto1_real'',
-        ''cross_real'', and ''cross_imag''. All columns contain
+        each FITS table are ''auto0_real'' and ''auto1_real'',
+        for each polarization's auto-correlation. All columns contain
         double-precision floating-point numbers.
 
         Inputs:
@@ -249,6 +253,7 @@ class Spectrometer(object):
                    ('auto1_real', self.s.corr_1, (self.stream_2, self.stream_2))] # (1, 1)
         data = {}
         
+        # Collect spectra
         for ninteg in range(nspec):
             cnt_0 = self.wait_for_cnt()
             for name, corr, (stream_1, stream_2) in spectra: # read the spectra from both corrs
@@ -273,9 +278,9 @@ class Spectrometer(object):
         the observation (coordinates, number of spectra collected, time,
         etc.) and spectrometer attributes used. Each set of spectra is
         stored in its own FITS table in the FITS file. The columns in
-        each FITS table are ''auto0_real'', ''auto1_real'',
-        ''cross_real'', and ''cross_imag''. All columns contain
-        double-precision floating-point numbers.
+        each FITS table are ''cross_real'' and ''cross_imag'', for the real
+        and imaginary components of the cross-correlated data. All columns 
+        contain double-precision floating-point numbers.
 
         Inputs:
         - filename: Name of the output FITs file.
