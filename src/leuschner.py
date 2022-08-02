@@ -4,6 +4,7 @@
 #### The use of hera_corr_f
 #### The issue of needing to program from both casperfpga and SnapFengine
 #### Correlator characterization
+#### Which SNAP board is being used
 
 
 import casperfpga
@@ -98,7 +99,24 @@ class Spectrometer(object):
         """
         self.fpga.upload_to_ram_and_program(self.fpgfile)
         self.s.fpga.upload_to_ram_and_program(self.fpgfile)
+
+    def initialize_discover_SNAP_ADC0(self):
+        """
+        Program the fpga on the SNAP and initialize the 1st ADC on the
+        Discover SNAP board.
+        """
+        logging.info('Initializing the Discover SNAP...')
+
+        # Program fpga
+        self.program()
+
+        self.s.corr_0.set_acc_len(self.acc_len)
+        self.s.corr_1.set_acc_len(self.acc_len)
+
+        # Initialize and align the 1st ADC
         
+
+
 
     def initialize(self):
         """
