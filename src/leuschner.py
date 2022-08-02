@@ -100,6 +100,57 @@ class Spectrometer(object):
         self.fpga.upload_to_ram_and_program(self.fpgfile)
         self.s.fpga.upload_to_ram_and_program(self.fpgfile)
 
+        
+    def alignFrameClock(self, chipsel=None, chips_lanes=None, retry=True):
+        """Align frame clock with data frame."""
+        if chips_lanes is None:
+                if chipsel is None:
+                    chips_lanes = {chip:self.s.adc.laneList for chip in self.s.adc.adcList}
+                elif chipsel is not None:
+                    chips_lanes = {chip:self.s.adc.laneList for chip in [chipsel]}
+        self.logger.debug('Aligning frame clock on ADCs/lanes: %s' % \
+                          str(chips_lanes))
+        failed_chips = {}
+        self.s.adc.setDemux(numChannel=1)
+        for chip, lanes in chips_lanes.items():
+            self.s.adc.selectADC(chip)
+            self.s.adc.adc.test('dual_custom_pat', self.s.adc.p1, self.s.adc.p2)
+            ans1 = self.s.adc._signed(self.s.adc.p1, self.s.adc.RESOLUTION)
+            ans2 = self.s.adc._signed(self.s.adc.p2, self.s.adc.RESOLUTION)
+            failed_lanes = []
+            for cnt in range(2 * self.RESOLUTION):
+                slipped = False
+                self.s.adc.snapshot() # make bitslip "take" (?!) XXX
+                d = self.s.adc.readRAM(chip).reshape(-1, self.s.adc.RESOLUTION)
+                # sanity check: these failures mean line clock errors
+                failed_lanes += [L for L in lanes
+                        if np.any(d[0::2,L] != d[0,L]) or \
+                           np.any(d[1::2,L] != d[1,L])]
+                lanes = [L for L in lanes if L not in failed_lanes]
+                for lane in lanes:
+                    if not d[0,lane] in [ans1, ans2]:
+                        if cnt == 2*self.s.adc.RESOLUTION - 1:
+                            # Failed on last try
+                            failed_lanes += [lane]
+                        self.s.adc.bitslip(chip, lane)
+                        slipped = True
+                if not slipped:
+                    break
+            self.s.adc.adc.test('off')
+            if len(failed_lanes) > 0:
+                failed_chips[chip] = failed_lanes
+        self.s.adc.setDemux(numChannel=self.s.adc.num_chans)
+        if len(failed_chips) > 0 and retry:
+            if self.s.adc._retry_cnt < self.s.adc._retry:
+                self.s.adc._retry_cnt += 1
+                self.logger.info('retry=%d/%d redo Line on ADCs/lanes: %s' % \
+                            (self.s.adc._retry_cnt, self.s.adc._retry, failed_chips))
+                self.s.adc.alignLineClock(failed_chips)
+                return self.s.adc.alignFrameClock(failed_chips)
+        return failed_chips
+
+        
+
     def initialize_discover_SNAP_ADC0(self):
         """
         Program the fpga on the SNAP and initialize the 1st ADC on the
