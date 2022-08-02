@@ -1,3 +1,11 @@
+# Things to address:
+#### UnicodeDecodeError in s.initialize
+#### Other things to be added to PrimaryHDU
+#### The use of hera_corr_f
+#### The issue of needing to program from both casperfpga and SnapFengine
+#### Correlator characterization
+
+
 import casperfpga
 from hera_corr_f import SnapFengine
 import ugradio
@@ -174,8 +182,8 @@ class Spectrometer(object):
 
         header['PYTHON'] = (3.8, 'Python version')
         header['SRC'] = ('https://github.com/darbymccauley/Leuschner_Spectrometer.git', 'Source code')
-        # header['CASPERFPGA'] = (CASPERFPGA_VERSION, "casperfpga code used")
-        # header['HERA_CORR_F'] = (HERA_CORR_F_VERSION, "hera_corr_f code used")
+        # header['CASPERFPGA'] = (CASPERFPGA_VERSION, 'casperfpga code used')
+        # header['HERA_CORR_F'] = (HERA_CORR_F_VERSION, 'hera_corr_f code used')
         
         # Save observation attributes
         header['L'] = (l.value, 'Galactic longitude [deg]')
