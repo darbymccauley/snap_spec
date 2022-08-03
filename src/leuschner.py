@@ -101,7 +101,7 @@ class Spectrometer(object):
         self.fpga.upload_to_ram_and_program(self.fpgfile)
         self.s.fpga.upload_to_ram_and_program(self.fpgfile)
 
-        
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~        
     def alignFrameClock_darby(self, chipsel=None, chips_lanes=None, retry=True):
         """
         Align frame clock with data frame. (Sourced from hera_corr_f.)
@@ -161,7 +161,7 @@ class Spectrometer(object):
         return failed_chips
 
 
-    def alignFrameClock_darby(self, chipsel=None, chip_lanes=None, ker_size=5):
+    def alignLineClock_darby(self, chipsel=None, chip_lanes=None, ker_size=5):
         """
         Find a tap for the line clock that produces reliable bit
         capture from ADC.
@@ -244,14 +244,42 @@ class Spectrometer(object):
                 self.alignFrameClock_darby(failed_chips) # retry using my functions again
                 return self.rampTest_darby(chipsel=chipsel, nchecks=nchecks, retry=retry) # retry using my functions again
         return failed_chips
+
+
+    def align_adc_darby(self, chipsel=None, chip_lanes=None, ker_size=5, retry=True, nchecks=300, force=False, verify=True):
+        """Align clock and data lanes of ADC."""
+        if force:
+            self.s._set_adc_status(0)
+        if self.s.adc_is_configured():
+            return
+        fails = self.alignLineClock_darby(chipsel=chipsel, chip_lanes=chip_lanes, ker_size=ker_size)
+        if len(fails) > 0:
+            self.logger.warning("alignLineClock failed on: " + str(fails))
+        fails = self.alignFrameClock_darby(chipsel=chipsel, chip_lanes=chip_lanes, retry=retry)
+        if len(fails) > 0:
+            self.logger.warning("alignFrameClock failed on: " + str(fails))
+        fails = self.rampTest_darby(chipsel=chipsel, nchecks=nchecks, retry=False)
+        if len(fails) > 0:
+            self.logger.warning("rampTest failed on: " + str(fails))
+        else:
+            self.s._set_adc_status(1)  # record status
+        if verify:
+            assert(self.s.adc_is_configured())  # errors if anything failed
+        # Otherwise, finish up here.
+        self.s.adc.selectADC(chipsel)
+        self.s.adc.adc.selectInput([1, 1, 3, 3])
+        self.s.adc.set_gain(4)
         
 
-    def initialize_discover_SNAP_ADC0(self):
+    def initialize_discover_SNAP(self, chipsel=None, chip_lanes=None, ker_size=5, retry=True, nchecks=300, force=False, verify=True):
         """
         Program the fpga on the SNAP and initialize the 1st ADC on the
         Discover SNAP board.
         """
-        logging.info('Initializing the Discover SNAP...')
+        if chipsel is None:
+            self.initialize()
+        
+        self.logger.info('Initializing the Discover SNAP...')
 
         # Program fpga
         self.program()
@@ -259,16 +287,33 @@ class Spectrometer(object):
         self.s.corr_0.set_acc_len(self.acc_len)
         self.s.corr_1.set_acc_len(self.acc_len)
 
-        # Initialize and align the 1st ADC
-
-
+        # Initialize and align the Nth ADC
+        while self.s.adc_is_configured() == 0:
+            self.s.adc.init()
+            self.align_adc_darby(chipsel=chipsel,
+                                chip_lanes=chip_lanes, 
+                                ker_size=ker_size, 
+                                retry=retry, 
+                                nchecks=nchecks, 
+                                force=force, 
+                                verify=verify)
+        
+        # Initialize other blocks and both correlators
+        try:
+            self.s.initialize()
+        except UnicodeDecodeError: # XXX address this issue later with Aaron
+            self.s.pfb.initialize()
+            self.s.corr_0.initialize()
+            self.s.corr_1.initialize()
+        self.logger.info('Spectrometer initialized.')
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
     def initialize(self):
         """
         Programs the fpga on the SNAP and initializes the spectrometer.
         """
-        logging.info('Initializing the spectrometer...')
+        self.logger.info('Initializing the spectrometer...')
         
         # Program fpga
         self.program()
@@ -288,7 +333,7 @@ class Spectrometer(object):
             self.s.pfb.initialize()
             self.s.corr_0.initialize()
             self.s.corr_1.initialize()
-        logging.info('Spectrometer initialized.')
+        self.logger.info('Spectrometer initialized.')
 
 
     def make_PrimaryHDU(self, nspec, coords, coord_sys='ga'):
