@@ -23851,3 +23851,23 @@
 07/29/2022 10:13:09 PM - DEBUG - -> code[replace] old[1:1] new[1:1]
 07/29/2022 10:13:09 PM - DEBUG - parse_part from 1 to 1 (to 0 in part parser)
 07/29/2022 10:13:09 PM - DEBUG - diff parser end
+08/03/2022 11:10:51 PM - DEBUG - socket_closer: called from class SkarabTransport test_host_type
+08/03/2022 11:10:51 PM - DEBUG - Using selector: EpollSelector
+08/03/2022 11:10:51 PM - DEBUG - Starting client loop for ('localhost', 7147)
+08/03/2022 11:10:51 PM - DEBUG - Connected to localhost:7147 with client addr 127.0.0.1:60238
+08/03/2022 11:10:51 PM - DEBUG - received from localhost:7147: '#version efb0a39-dirty'
+08/03/2022 11:10:51 PM - DEBUG - received from localhost:7147: '#build-state 2022-03-16T21:48:05'
+08/03/2022 11:10:56 PM - DEBUG - Using selector: EpollSelector
+08/03/2022 11:10:56 PM - DEBUG - client _line_read_loop() from localhost:7147 completed
+08/03/2022 11:11:00 PM - INFO - Client connect loop for ('localhost', 7147) finished.
+08/03/2022 11:11:11 PM - DEBUG - socket_closer: called from class SkarabTransport test_host_type
+08/03/2022 11:11:11 PM - DEBUG - Using selector: EpollSelector
+08/03/2022 11:11:11 PM - DEBUG - Starting client loop for ('localhost', 7147)
+08/03/2022 11:11:11 PM - DEBUG - Connected to localhost:7147 with client addr 127.0.0.1:60246
+08/03/2022 11:11:11 PM - DEBUG - received from localhost:7147: '#version efb0a39-dirty'
+08/03/2022 11:11:11 PM - DEBUG - received from localhost:7147: '#build-state 2022-03-16T21:48:05'
+08/03/2022 11:11:16 PM - DEBUG - Using selector: EpollSelector
+08/03/2022 11:11:16 PM - DEBUG - client _line_read_loop() from localhost:7147 completed
+08/03/2022 11:11:16 PM - INFO - Client connect loop for ('localhost', 7147) finished.
+08/03/2022 11:11:36 PM - DEBUG - pickle loaded: /home/pi/.local/lib/python3.9/site-packages/leuschner.py
+08/03/2022 11:11:36 PM - DEBUG - pickle loaded: /usr/local/lib/python3.9/dist-packages/jedi/third_party/typeshed/stdlib/3/builtins.pyi

@@ -3,7 +3,6 @@
 #### Other things to be added to PrimaryHDU
 #### The use of hera_corr_f
 #### The issue of needing to program from both casperfpga and SnapFengine
-#### Correlator characterization
 #### Which SNAP board is being used
 
 
@@ -101,7 +100,7 @@ class Spectrometer(object):
         self.fpga.upload_to_ram_and_program(self.fpgfile)
         self.s.fpga.upload_to_ram_and_program(self.fpgfile)
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~        
+ 
     def alignFrameClock_darby(self, chipsel=None, chips_lanes=None, retry=True):
         """
         Align frame clock with data frame. (Sourced from hera_corr_f.)
@@ -119,8 +118,9 @@ class Spectrometer(object):
                     chips_lanes = {chip:self.s.adc.laneList for chip in self.s.adc.adcList}
                 elif chipsel is not None:
                     chips_lanes = {chip:self.s.adc.laneList for chip in chipsel}
-        self.logger.debug('Aligning frame clock on ADCs/lanes: %s' % \
-                          str(chips_lanes))
+        #self.logger.debug('Aligning frame clock on ADCs/lanes: %s' % \
+                          #str(chips_lanes))
+        print('Aligning frame clock on ADCs/lanes:', chips_lanes)
         failed_chips = {}
         self.s.adc.setDemux(numChannel=1)
         for chip, lanes in chips_lanes.items():
@@ -154,8 +154,9 @@ class Spectrometer(object):
         if len(failed_chips) > 0 and retry:
             if self.s.adc._retry_cnt < self.s.adc._retry:
                 self.s.adc._retry_cnt += 1
-                self.logger.info('retry=%d/%d redo Line on ADCs/lanes: %s' % \
-                            (self.s.adc._retry_cnt, self.s.adc._retry, failed_chips))
+                #self.logger.info('retry=%d/%d redo Line on ADCs/lanes: %s' % \
+                            #(self.s.adc._retry_cnt, self.s.adc._retry, failed_chips))
+                print('retrying: ADCs/lanes:', failed_chips)
                 self.alignLineClock_darby(chipsel=failed_chips) # retry using my functions again
                 return self.alignFrameClock_darby(chipsel=failed_chips) # retry using my functions again
         return failed_chips
@@ -179,12 +180,14 @@ class Spectrometer(object):
                     chips_lanes = {chip:self.s.adc.laneList for chip in self.s.adc.adcList}
                 elif chipsel is not None:
                     chips_lanes = {chip:self.s.adc.laneList for chip in chipsel}
-        self.logger.info('Aligning line clock on ADCs/lanes: %s' % \
-                          str(chips_lanes))
+        #self.logger.info('Aligning line clock on ADCs/lanes: %s' % \
+                          #str(chips_lanes))
+        print('Aligning lane clock on ADCs/lanes:', chip_lanes)
         try:
             self.s.adc._find_working_taps(ker_size=ker_size)
         except(RuntimeError):
-            self.logger.info('Failed to find working taps.')
+            #self.logger.info('Failed to find working taps.')
+            print('Failed to find working taps.')
             return chips_lanes # total failure
         self.s.adc.setDemux(numChannel=1)
         for chip, lanes in chips_lanes.items():
@@ -195,7 +198,8 @@ class Spectrometer(object):
                 self.s.adc.delay(tap, chip, L)
             # Remove from future consideration if tap doesn't work out
             self.s.adc.working_taps[chip] = taps[np.abs(taps - tap) >= ker_size//2]
-            self.logger.info('Setting ADC=%d tap=%s' % (chip, tap))
+            #self.logger.info('Setting ADC=%d tap=%s' % (chip, tap))
+            print('Setting ADC=', chip, tap)
         self.s.adc.setDemux(numChannel=self.s.adc.num_chans)
         return {} # success
 
@@ -216,7 +220,8 @@ class Spectrometer(object):
             chips = self.s.adc.adcList
         elif chipsel is not None:
             chips = chipsel
-        self.logger.debug('Ramp test on ADCs: %s' % str(chips))
+        #self.logger.debug('Ramp test on ADCs: %s' % str(chips))
+        print('Ramp test on ADCs:', chips)
         failed_chips = {}
         self.s.adc.setDemux(numChannel=1)
         predicted = np.arange(128).reshape(-1,1)
@@ -238,8 +243,9 @@ class Spectrometer(object):
         if len(failed_chips) > 0 and retry:
             if self.s.adc._retry_cnt < self.s.adc._retry:
                 self.s.adc._retry_cnt += 1  
-                self.logger.info('retry=%d/%d redo Line/Frame on ADCs/lanes: %s' % \
-                            (self.s.adc._retry_cnt, self.s.adc._retry, failed_chips))
+                #self.logger.info('retry=%d/%d redo Line/Frame on ADCs/lanes: %s' % \
+                           #(self.s.adc._retry_cnt, self.s.adc._retry, failed_chips))
+                print('Retry=', self.s.adc._retry_cnt, 'Redo line/frame on ADCs/lanes', failed_chips)
                 self.alignLineClock_darby(failed_chips) # retry using my functions again
                 self.alignFrameClock_darby(failed_chips) # retry using my functions again
                 return self.rampTest_darby(chipsel=chipsel, nchecks=nchecks, retry=retry) # retry using my functions again
@@ -254,13 +260,16 @@ class Spectrometer(object):
             return
         fails = self.alignLineClock_darby(chipsel=chipsel, chip_lanes=chip_lanes, ker_size=ker_size)
         if len(fails) > 0:
-            self.logger.warning("alignLineClock failed on: " + str(fails))
+            #self.logger.warning("alignLineClock failed on: " + str(fails))
+            print('WARNING: alignLineClock_darby failed on:', fails)
         fails = self.alignFrameClock_darby(chipsel=chipsel, chip_lanes=chip_lanes, retry=retry)
         if len(fails) > 0:
             self.logger.warning("alignFrameClock failed on: " + str(fails))
+            print('WARNING: alignFrameClock_darby failed on:', fails)
         fails = self.rampTest_darby(chipsel=chipsel, nchecks=nchecks, retry=False)
         if len(fails) > 0:
-            self.logger.warning("rampTest failed on: " + str(fails))
+            #self.logger.warning("rampTest failed on: " + str(fails))
+            print('WARNING: rampTest_darby failed on:', fails)
         else:
             self.s._set_adc_status(1)  # record status
         if verify:
@@ -279,7 +288,7 @@ class Spectrometer(object):
         if chipsel is None:
             self.initialize()
         
-        self.logger.info('Initializing the Discover SNAP...')
+        #self.logger.info('Initializing the Discover SNAP...')
 
         # Program fpga
         self.program()
@@ -305,15 +314,14 @@ class Spectrometer(object):
             self.s.pfb.initialize()
             self.s.corr_0.initialize()
             self.s.corr_1.initialize()
-        self.logger.info('Spectrometer initialized.')
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        #self.logger.info('Spectrometer initialized.')
 
 
     def initialize(self):
         """
         Programs the fpga on the SNAP and initializes the spectrometer.
         """
-        self.logger.info('Initializing the spectrometer...')
+        #self.logger.info('Initializing the spectrometer...')
         
         # Program fpga
         self.program()
@@ -333,7 +341,7 @@ class Spectrometer(object):
             self.s.pfb.initialize()
             self.s.corr_0.initialize()
             self.s.corr_1.initialize()
-        self.logger.info('Spectrometer initialized.')
+        #self.logger.info('Spectrometer initialized.')
 
 
     def make_PrimaryHDU(self, nspec, coords, coord_sys='ga'):
@@ -387,7 +395,7 @@ class Spectrometer(object):
         header['SPEC/ACC'] = (self.spec_per_acc, 'Spectra per accumulation')
         header['STREAM_1'] = (self.stream_1, 'First ADC port used')
         header['STREAM_2'] = (self.stream_2, 'Second ADC port used')
-        header['LOGGER'] = (self.logger, 'Logger file')
+        #header['LOGGER'] = (self.logger, 'Logger file')
 
         header['PYTHON'] = (3.8, 'Python version')
         header['SRC'] = ('https://github.com/darbymccauley/Leuschner_Spectrometer.git', 'Source code')

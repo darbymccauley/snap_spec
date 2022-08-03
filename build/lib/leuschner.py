@@ -1,3 +1,11 @@
+# Things to address:
+#### UnicodeDecodeError in s.initialize
+#### Other things to be added to PrimaryHDU
+#### The use of hera_corr_f
+#### The issue of needing to program from both casperfpga and SnapFengine
+#### Which SNAP board is being used
+
+
 import casperfpga
 from hera_corr_f import SnapFengine
 import ugradio
@@ -9,6 +17,7 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 from astropy.time import Time
 from astropy.io import fits
+import random
 
 
 DELAY_TIME = 0.1 # seconds
@@ -81,6 +90,7 @@ class Spectrometer(object):
             return True
         else:
             logging.warning('SNAP is not programmed and running.')
+            return False
 
   
     def program(self):
@@ -89,13 +99,229 @@ class Spectrometer(object):
         """
         self.fpga.upload_to_ram_and_program(self.fpgfile)
         self.s.fpga.upload_to_ram_and_program(self.fpgfile)
+
+ 
+    def alignFrameClock_darby(self, chipsel=None, chips_lanes=None, retry=True):
+        """
+        Align frame clock with data frame. (Sourced from hera_corr_f.)
         
+        Inputs: 
+        - chipsel (list): which ADC chip to align. Default is all chips. 
+        - chips_lanes: which lanes of the ADC(s) to align. Default is all lanes.
+        - retry: whether to retry alignment if initial attempt fails.
+
+        Returns:
+        - Which chips failed and the corresponding lanes that errored.
+        """
+        if chips_lanes is None:
+                if chipsel is None:
+                    chips_lanes = {chip:self.s.adc.laneList for chip in self.s.adc.adcList}
+                elif chipsel is not None:
+                    chips_lanes = {chip:self.s.adc.laneList for chip in chipsel}
+        #self.logger.debug('Aligning frame clock on ADCs/lanes: %s' % \
+                          #str(chips_lanes))
+        print('Aligning frame clock on ADCs/lanes:', chips_lanes)
+        failed_chips = {}
+        self.s.adc.setDemux(numChannel=1)
+        for chip, lanes in chips_lanes.items():
+            self.s.adc.selectADC(chip)
+            self.s.adc.adc.test('dual_custom_pat', self.s.adc.p1, self.s.adc.p2)
+            ans1 = self.s.adc._signed(self.s.adc.p1, self.s.adc.RESOLUTION)
+            ans2 = self.s.adc._signed(self.s.adc.p2, self.s.adc.RESOLUTION)
+            failed_lanes = []
+            for cnt in range(2*self.RESOLUTION):
+                slipped = False
+                self.s.adc.snapshot() # make bitslip "take" (?!) XXX
+                d = self.s.adc.readRAM(chip).reshape(-1, self.s.adc.RESOLUTION)
+                # sanity check: these failures mean line clock errors
+                failed_lanes += [L for L in lanes
+                        if np.any(d[0::2,L] != d[0,L]) or \
+                           np.any(d[1::2,L] != d[1,L])]
+                lanes = [L for L in lanes if L not in failed_lanes]
+                for lane in lanes:
+                    if not d[0, lane] in [ans1, ans2]:
+                        if cnt == 2*self.s.adc.RESOLUTION - 1:
+                            # Failed on last try
+                            failed_lanes += [lane]
+                        self.s.adc.bitslip(chip, lane)
+                        slipped = True
+                if not slipped:
+                    break
+            self.s.adc.adc.test('off')
+            if len(failed_lanes) > 0:
+                failed_chips[chip] = failed_lanes
+        self.s.adc.setDemux(numChannel=self.s.adc.num_chans)
+        if len(failed_chips) > 0 and retry:
+            if self.s.adc._retry_cnt < self.s.adc._retry:
+                self.s.adc._retry_cnt += 1
+                #self.logger.info('retry=%d/%d redo Line on ADCs/lanes: %s' % \
+                            #(self.s.adc._retry_cnt, self.s.adc._retry, failed_chips))
+                print('retrying: ADCs/lanes:', failed_chips)
+                self.alignLineClock_darby(chipsel=failed_chips) # retry using my functions again
+                return self.alignFrameClock_darby(chipsel=failed_chips) # retry using my functions again
+        return failed_chips
+
+
+    def alignLineClock_darby(self, chipsel=None, chip_lanes=None, ker_size=5):
+        """
+        Find a tap for the line clock that produces reliable bit
+        capture from ADC.
+
+        Inputs: 
+        - chipsel (list): which ADC chip to align. Default is all chips. 
+        - chips_lanes: which lanes of the ADC(s) to align. Default is all lanes.
+        - retry: whether to retry alignment if initial attempt fails.
+
+        Returns:
+        - Which chips failed and the corresponding lanes that errored.        
+        """
+        if chips_lanes is None:
+                if chipsel is None:
+                    chips_lanes = {chip:self.s.adc.laneList for chip in self.s.adc.adcList}
+                elif chipsel is not None:
+                    chips_lanes = {chip:self.s.adc.laneList for chip in chipsel}
+        #self.logger.info('Aligning line clock on ADCs/lanes: %s' % \
+                          #str(chips_lanes))
+        print('Aligning lane clock on ADCs/lanes:', chip_lanes)
+        try:
+            self.s.adc._find_working_taps(ker_size=ker_size)
+        except(RuntimeError):
+            #self.logger.info('Failed to find working taps.')
+            print('Failed to find working taps.')
+            return chips_lanes # total failure
+        self.s.adc.setDemux(numChannel=1)
+        for chip, lanes in chips_lanes.items():
+            self.s.adc.selectADC(chip)
+            taps = self.s.adc.working_taps[chip]
+            tap = random.choice(taps)
+            for L in self.s.adc.laneList: # redo all lanes to be the same
+                self.s.adc.delay(tap, chip, L)
+            # Remove from future consideration if tap doesn't work out
+            self.s.adc.working_taps[chip] = taps[np.abs(taps - tap) >= ker_size//2]
+            #self.logger.info('Setting ADC=%d tap=%s' % (chip, tap))
+            print('Setting ADC=', chip, tap)
+        self.s.adc.setDemux(numChannel=self.s.adc.num_chans)
+        return {} # success
+
+
+    def rampTest_darby(self, chipsel=None, nchecks=300, retry=False):
+        """
+        (Sourced from hera_corr_f.)
+        
+        Inputs:
+        - chipsel (list): which ADC chip to align. Default is all chips. 
+        - nchecks: number of times to check ramp test passing.
+        - retry: whether to retry if initial attempt fails.
+
+        Returns:
+        - Which chips failed and the corresponding lanes that errored.
+        """
+        if chipsel is None:
+            chips = self.s.adc.adcList
+        elif chipsel is not None:
+            chips = chipsel
+        #self.logger.debug('Ramp test on ADCs: %s' % str(chips))
+        print('Ramp test on ADCs:', chips)
+        failed_chips = {}
+        self.s.adc.setDemux(numChannel=1)
+        predicted = np.arange(128).reshape(-1,1)
+        self.s.adc.selectADC(chips) # specify chips
+        self.s.adc.adc.test("en_ramp")
+        for cnt in range(nchecks):
+            self.s.adc.snapshot()
+            for chip, d in self.s.adc.readRAM(signed=False).items():
+                ans = (predicted + d[0,0]) % 256
+                failed_lanes = np.sum(d != ans, axis=0)
+                if np.any(failed_lanes) > 0:
+                    failed_chips[chip] = np.where(failed_lanes)[0]
+            if (retry is False) and len(failed_chips) > 0:
+                # can bail out if we aren't retrying b/c we don't need list of failures.
+                break
+        self.s.adc.selectADC(chips) # specify chips
+        self.s.adc.adc.test('off')
+        self.s.adc.setDemux(numChannel=self.s.adc.num_chans)
+        if len(failed_chips) > 0 and retry:
+            if self.s.adc._retry_cnt < self.s.adc._retry:
+                self.s.adc._retry_cnt += 1  
+                #self.logger.info('retry=%d/%d redo Line/Frame on ADCs/lanes: %s' % \
+                           #(self.s.adc._retry_cnt, self.s.adc._retry, failed_chips))
+                print('Retry=', self.s.adc._retry_cnt, 'Redo line/frame on ADCs/lanes', failed_chips)
+                self.alignLineClock_darby(failed_chips) # retry using my functions again
+                self.alignFrameClock_darby(failed_chips) # retry using my functions again
+                return self.rampTest_darby(chipsel=chipsel, nchecks=nchecks, retry=retry) # retry using my functions again
+        return failed_chips
+
+
+    def align_adc_darby(self, chipsel=None, chip_lanes=None, ker_size=5, retry=True, nchecks=300, force=False, verify=True):
+        """Align clock and data lanes of ADC."""
+        if force:
+            self.s._set_adc_status(0)
+        if self.s.adc_is_configured():
+            return
+        fails = self.alignLineClock_darby(chipsel=chipsel, chip_lanes=chip_lanes, ker_size=ker_size)
+        if len(fails) > 0:
+            #self.logger.warning("alignLineClock failed on: " + str(fails))
+            print('WARNING: alignLineClock_darby failed on:', fails)
+        fails = self.alignFrameClock_darby(chipsel=chipsel, chip_lanes=chip_lanes, retry=retry)
+        if len(fails) > 0:
+            self.logger.warning("alignFrameClock failed on: " + str(fails))
+            print('WARNING: alignFrameClock_darby failed on:', fails)
+        fails = self.rampTest_darby(chipsel=chipsel, nchecks=nchecks, retry=False)
+        if len(fails) > 0:
+            #self.logger.warning("rampTest failed on: " + str(fails))
+            print('WARNING: rampTest_darby failed on:', fails)
+        else:
+            self.s._set_adc_status(1)  # record status
+        if verify:
+            assert(self.s.adc_is_configured())  # errors if anything failed
+        # Otherwise, finish up here.
+        self.s.adc.selectADC(chipsel)
+        self.s.adc.adc.selectInput([1, 1, 3, 3])
+        self.s.adc.set_gain(4)
+        
+
+    def initialize_discover_SNAP(self, chipsel=None, chip_lanes=None, ker_size=5, retry=True, nchecks=300, force=False, verify=True):
+        """
+        Program the fpga on the SNAP and initialize the 1st ADC on the
+        Discover SNAP board.
+        """
+        if chipsel is None:
+            self.initialize()
+        
+        #self.logger.info('Initializing the Discover SNAP...')
+
+        # Program fpga
+        self.program()
+
+        self.s.corr_0.set_acc_len(self.acc_len)
+        self.s.corr_1.set_acc_len(self.acc_len)
+
+        # Initialize and align the Nth ADC
+        while self.s.adc_is_configured() == 0:
+            self.s.adc.init()
+            self.align_adc_darby(chipsel=chipsel,
+                                chip_lanes=chip_lanes, 
+                                ker_size=ker_size, 
+                                retry=retry, 
+                                nchecks=nchecks, 
+                                force=force, 
+                                verify=verify)
+        
+        # Initialize other blocks and both correlators
+        try:
+            self.s.initialize()
+        except UnicodeDecodeError: # XXX address this issue later with Aaron
+            self.s.pfb.initialize()
+            self.s.corr_0.initialize()
+            self.s.corr_1.initialize()
+        #self.logger.info('Spectrometer initialized.')
+
 
     def initialize(self):
         """
         Programs the fpga on the SNAP and initializes the spectrometer.
         """
-        # logging.info('Starting the spectrometer.')
+        #self.logger.info('Initializing the spectrometer...')
         
         # Program fpga
         self.program()
@@ -104,7 +330,6 @@ class Spectrometer(object):
         self.s.corr_1.set_acc_len(self.acc_len)
         
         # Initialize and align ADCs
-        # logging.info('Aligning and initializing ADCs...')
         while self.s.adc_is_configured() == 0:
             self.s.adc.init()
             self.s.align_adc()        
@@ -116,7 +341,7 @@ class Spectrometer(object):
             self.s.pfb.initialize()
             self.s.corr_0.initialize()
             self.s.corr_1.initialize()
-        logging.info('Spectrometer initialized.')
+        #self.logger.info('Spectrometer initialized.')
 
 
     def make_PrimaryHDU(self, nspec, coords, coord_sys='ga'):
@@ -162,28 +387,28 @@ class Spectrometer(object):
         header = fits.Header()
 
         # Save metadata of the system and spectrometer
-        header['NSPEC'] = (nspec, "Number of spectra collected")
-        header['FPGFILE'] = (self.fpgfile, "FPGA FPG file")
-        header['HOST'] = (self.s.fpga.host, "Host of the FPGA")
-        header['TRANSP'] = (self.transport, "Communication protocal (transport)")
-        header['ACCLEN'] = (self.acc_len, "Number of clock cycles")
-        header['SPEC/ACC'] = (self.spec_per_acc, "Spectra per accumulation")
-        header['STREAM_1'] = (self.stream_1, "First ADC port used")
-        header['STREAM_2'] = (self.stream_2, "Second ADC port used")
-        header['LOGGER'] = (self.logger, "Logger")
+        header['NSPEC'] = (nspec, 'Number of spectra collected')
+        header['FPGFILE'] = (self.fpgfile, 'FPGA FPG file')
+        header['HOST'] = (self.s.fpga.host, 'Host of the FPGA')
+        header['TRANSP'] = (self.transport, 'Communication protocal (transport)')
+        header['ACCLEN'] = (self.acc_len, 'Number of clock cycles')
+        header['SPEC/ACC'] = (self.spec_per_acc, 'Spectra per accumulation')
+        header['STREAM_1'] = (self.stream_1, 'First ADC port used')
+        header['STREAM_2'] = (self.stream_2, 'Second ADC port used')
+        #header['LOGGER'] = (self.logger, 'Logger file')
 
-        header['PYTHON'] = (3.8, "Python version")
-        header['SRC'] = ('https://github.com/darbymccauley/Leuschner_Spectrometer.git', "Source code")
-        # header['CASPERFPGA'] = (CASPERFPGA_VERSION, "casperfpga code used")
-        # header['HERA_CORR_F'] = (HERA_CORR_F_VERSION, "hera_corr_f code used")
+        header['PYTHON'] = (3.8, 'Python version')
+        header['SRC'] = ('https://github.com/darbymccauley/Leuschner_Spectrometer.git', 'Source code')
+        # header['CASPERFPGA'] = (CASPERFPGA_VERSION, 'casperfpga code used')
+        # header['HERA_CORR_F'] = (HERA_CORR_F_VERSION, 'hera_corr_f code used')
         
         # Save observation attributes
-        header['L'] = (l.value, "Galactic longitude [deg]")
-        header['B'] = (b.value, "Galactic latitude [deg]")
-        header['RA'] = (ra.value, "Right Ascension [deg]")
-        header['DEC'] = (dec.value, "Declination [deg]")
-        header['JD'] = (obs_start_jd, "Julian date of start time")
-        header['UNIX'] = (obs_start_unix, "Seconds since epoch")
+        header['L'] = (l.value, 'Galactic longitude [deg]')
+        header['B'] = (b.value, 'Galactic latitude [deg]')
+        header['RA'] = (ra.value, 'Right Ascension [deg]')
+        header['DEC'] = (dec.value, 'Declination [deg]')
+        header['JD'] = (obs_start_jd, 'Julian date of start time')
+        header['UNIX'] = (obs_start_unix, 'Seconds since epoch')
 
         primaryhdu = fits.PrimaryHDU(header=header)
         return primaryhdu
@@ -191,7 +416,9 @@ class Spectrometer(object):
 
     def wait_for_cnt(self):
         """
-        Waits for corr_0 acc_cnt to increase by 1. Returns the count read from the register.
+        Waits for corr_0 acc_cnt to increase by 1. 
+        Returns the count read from the register.
+        (Sourced with modifications from hera_corr_f.)
         """
         cnt_0 = self.s.corr_0.read_uint('acc_cnt')
         while self.s.corr_0.read_uint('acc_cnt') < (cnt_0+1):
@@ -209,6 +436,8 @@ class Spectrometer(object):
         - pol2: second polarization
 
         Returns: correlated data, either auto or cross depending on choice of pol1 and pol2.
+
+        (Sourced with modifications from hera_corr_f.)
         """
         corr.set_input(pol1, pol2)
         spec = corr.read_bram(flush_vacc=False)/float(self.acc_len*self.spec_per_acc)
@@ -225,8 +454,8 @@ class Spectrometer(object):
         the observation (coordinates, number of spectra collected, time,
         etc.) and spectrometer attributes used. Each set of spectra is
         stored in its own FITS table in the FITS file. The columns in
-        each FITS table are ''auto0_real'', ''auto1_real'',
-        ''cross_real'', and ''cross_imag''. All columns contain
+        each FITS table are ''auto0_real'' and ''auto1_real'',
+        for each polarization's auto-correlation. All columns contain
         double-precision floating-point numbers.
 
         Inputs:
@@ -249,6 +478,7 @@ class Spectrometer(object):
                    ('auto1_real', self.s.corr_1, (self.stream_2, self.stream_2))] # (1, 1)
         data = {}
         
+        # Collect spectra
         for ninteg in range(nspec):
             cnt_0 = self.wait_for_cnt()
             for name, corr, (stream_1, stream_2) in spectra: # read the spectra from both corrs
@@ -273,9 +503,9 @@ class Spectrometer(object):
         the observation (coordinates, number of spectra collected, time,
         etc.) and spectrometer attributes used. Each set of spectra is
         stored in its own FITS table in the FITS file. The columns in
-        each FITS table are ''auto0_real'', ''auto1_real'',
-        ''cross_real'', and ''cross_imag''. All columns contain
-        double-precision floating-point numbers.
+        each FITS table are ''cross_real'' and ''cross_imag'', for the real
+        and imaginary components of the cross-correlated data. All columns 
+        contain double-precision floating-point numbers.
 
         Inputs:
         - filename: Name of the output FITs file.
