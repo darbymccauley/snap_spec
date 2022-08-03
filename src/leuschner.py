@@ -18,6 +18,7 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 from astropy.time import Time
 from astropy.io import fits
+import random
 
 
 DELAY_TIME = 0.1 # seconds
@@ -101,13 +102,23 @@ class Spectrometer(object):
         self.s.fpga.upload_to_ram_and_program(self.fpgfile)
 
         
-    def alignFrameClock(self, chipsel=None, chips_lanes=None, retry=True):
-        """Align frame clock with data frame."""
+    def alignFrameClock_darby(self, chipsel=None, chips_lanes=None, retry=True):
+        """
+        Align frame clock with data frame. (Sourced from hera_corr_f.)
+        
+        Inputs: 
+        - chipsel (list): which ADC chip to align. Default is all chips. 
+        - chips_lanes: which lanes of the ADC(s) to align. Default is all lanes.
+        - retry: whether to retry alignment if initial attempt fails.
+
+        Returns:
+        - Which chips failed and the corresponding lanes that errored.
+        """
         if chips_lanes is None:
                 if chipsel is None:
                     chips_lanes = {chip:self.s.adc.laneList for chip in self.s.adc.adcList}
                 elif chipsel is not None:
-                    chips_lanes = {chip:self.s.adc.laneList for chip in [chipsel]}
+                    chips_lanes = {chip:self.s.adc.laneList for chip in chipsel}
         self.logger.debug('Aligning frame clock on ADCs/lanes: %s' % \
                           str(chips_lanes))
         failed_chips = {}
@@ -118,7 +129,7 @@ class Spectrometer(object):
             ans1 = self.s.adc._signed(self.s.adc.p1, self.s.adc.RESOLUTION)
             ans2 = self.s.adc._signed(self.s.adc.p2, self.s.adc.RESOLUTION)
             failed_lanes = []
-            for cnt in range(2 * self.RESOLUTION):
+            for cnt in range(2*self.RESOLUTION):
                 slipped = False
                 self.s.adc.snapshot() # make bitslip "take" (?!) XXX
                 d = self.s.adc.readRAM(chip).reshape(-1, self.s.adc.RESOLUTION)
@@ -128,7 +139,7 @@ class Spectrometer(object):
                            np.any(d[1::2,L] != d[1,L])]
                 lanes = [L for L in lanes if L not in failed_lanes]
                 for lane in lanes:
-                    if not d[0,lane] in [ans1, ans2]:
+                    if not d[0, lane] in [ans1, ans2]:
                         if cnt == 2*self.s.adc.RESOLUTION - 1:
                             # Failed on last try
                             failed_lanes += [lane]
@@ -145,10 +156,94 @@ class Spectrometer(object):
                 self.s.adc._retry_cnt += 1
                 self.logger.info('retry=%d/%d redo Line on ADCs/lanes: %s' % \
                             (self.s.adc._retry_cnt, self.s.adc._retry, failed_chips))
-                self.s.adc.alignLineClock(failed_chips)
-                return self.s.adc.alignFrameClock(failed_chips)
+                self.alignLineClock_darby(chipsel=failed_chips) # retry using my functions again
+                return self.alignFrameClock_darby(chipsel=failed_chips) # retry using my functions again
         return failed_chips
 
+
+    def alignFrameClock_darby(self, chipsel=None, chip_lanes=None, ker_size=5):
+        """
+        Find a tap for the line clock that produces reliable bit
+        capture from ADC.
+
+        Inputs: 
+        - chipsel (list): which ADC chip to align. Default is all chips. 
+        - chips_lanes: which lanes of the ADC(s) to align. Default is all lanes.
+        - retry: whether to retry alignment if initial attempt fails.
+
+        Returns:
+        - Which chips failed and the corresponding lanes that errored.        
+        """
+        if chips_lanes is None:
+                if chipsel is None:
+                    chips_lanes = {chip:self.s.adc.laneList for chip in self.s.adc.adcList}
+                elif chipsel is not None:
+                    chips_lanes = {chip:self.s.adc.laneList for chip in chipsel}
+        self.logger.info('Aligning line clock on ADCs/lanes: %s' % \
+                          str(chips_lanes))
+        try:
+            self.s.adc._find_working_taps(ker_size=ker_size)
+        except(RuntimeError):
+            self.logger.info('Failed to find working taps.')
+            return chips_lanes # total failure
+        self.s.adc.setDemux(numChannel=1)
+        for chip, lanes in chips_lanes.items():
+            self.s.adc.selectADC(chip)
+            taps = self.s.adc.working_taps[chip]
+            tap = random.choice(taps)
+            for L in self.s.adc.laneList: # redo all lanes to be the same
+                self.s.adc.delay(tap, chip, L)
+            # Remove from future consideration if tap doesn't work out
+            self.s.adc.working_taps[chip] = taps[np.abs(taps - tap) >= ker_size//2]
+            self.logger.info('Setting ADC=%d tap=%s' % (chip, tap))
+        self.s.adc.setDemux(numChannel=self.s.adc.num_chans)
+        return {} # success
+
+
+    def rampTest_darby(self, chipsel=None, nchecks=300, retry=False):
+        """
+        (Sourced from hera_corr_f.)
+        
+        Inputs:
+        - chipsel (list): which ADC chip to align. Default is all chips. 
+        - nchecks: number of times to check ramp test passing.
+        - retry: whether to retry if initial attempt fails.
+
+        Returns:
+        - Which chips failed and the corresponding lanes that errored.
+        """
+        if chipsel is None:
+            chips = self.s.adc.adcList
+        elif chipsel is not None:
+            chips = chipsel
+        self.logger.debug('Ramp test on ADCs: %s' % str(chips))
+        failed_chips = {}
+        self.s.adc.setDemux(numChannel=1)
+        predicted = np.arange(128).reshape(-1,1)
+        self.s.adc.selectADC(chips) # specify chips
+        self.s.adc.adc.test("en_ramp")
+        for cnt in range(nchecks):
+            self.s.adc.snapshot()
+            for chip, d in self.s.adc.readRAM(signed=False).items():
+                ans = (predicted + d[0,0]) % 256
+                failed_lanes = np.sum(d != ans, axis=0)
+                if np.any(failed_lanes) > 0:
+                    failed_chips[chip] = np.where(failed_lanes)[0]
+            if (retry is False) and len(failed_chips) > 0:
+                # can bail out if we aren't retrying b/c we don't need list of failures.
+                break
+        self.s.adc.selectADC(chips) # specify chips
+        self.s.adc.adc.test('off')
+        self.s.adc.setDemux(numChannel=self.s.adc.num_chans)
+        if len(failed_chips) > 0 and retry:
+            if self.s.adc._retry_cnt < self.s.adc._retry:
+                self.s.adc._retry_cnt += 1  
+                self.logger.info('retry=%d/%d redo Line/Frame on ADCs/lanes: %s' % \
+                            (self.s.adc._retry_cnt, self.s.adc._retry, failed_chips))
+                self.alignLineClock_darby(failed_chips) # retry using my functions again
+                self.alignFrameClock_darby(failed_chips) # retry using my functions again
+                return self.rampTest_darby(chipsel=chipsel, nchecks=nchecks, retry=retry) # retry using my functions again
+        return failed_chips
         
 
     def initialize_discover_SNAP_ADC0(self):
@@ -165,7 +260,7 @@ class Spectrometer(object):
         self.s.corr_1.set_acc_len(self.acc_len)
 
         # Initialize and align the 1st ADC
-        
+
 
 
 
