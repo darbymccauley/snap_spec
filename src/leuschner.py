@@ -95,7 +95,7 @@ class Spectrometer(object):
         self.s.fpga.upload_to_ram_and_program(self.fpgfile)
 
  
-    def alignFrameClock_darby(self, chipsel=None, chip_lanes=None, retry=True):
+    def alignFrameClock_discover_snap(self, chipsel=None, chip_lanes=None, retry=True):
         """
         Align frame clock with data frame. (Sourced from hera_corr_f.)
         
@@ -151,12 +151,12 @@ class Spectrometer(object):
                 #self.logger.info('retry=%d/%d redo Line on ADCs/lanes: %s' % \
                             #(self.s.adc._retry_cnt, self.s.adc._retry, failed_chips))
                 print('retrying: ADCs/lanes:', failed_chips)
-                self.alignLineClock_darby(chipsel=failed_chips) # retry using my functions again
-                return self.alignFrameClock_darby(chipsel=failed_chips) # retry using my functions again
+                self.alignLineClock_discover_snap(chipsel=failed_chips) # retry using my functions again
+                return self.alignFrameClock_discover_snap(chipsel=failed_chips) # retry using my functions again
         return failed_chips
 
 
-    def alignLineClock_darby(self, chipsel=None, chip_lanes=None, ker_size=5):
+    def alignLineClock_discover_snap(self, chipsel=None, chip_lanes=None, ker_size=5):
         """
         Find a tap for the line clock that produces reliable bit
         capture from ADC.
@@ -198,7 +198,7 @@ class Spectrometer(object):
         return {} # success
 
 
-    def rampTest_darby(self, chipsel=None, nchecks=300, retry=False):
+    def rampTest_discover_snap(self, chipsel=None, nchecks=300, retry=False):
         """
         (Sourced from hera_corr_f.)
         
@@ -240,13 +240,13 @@ class Spectrometer(object):
                 #self.logger.info('retry=%d/%d redo Line/Frame on ADCs/lanes: %s' % \
                            #(self.s.adc._retry_cnt, self.s.adc._retry, failed_chips))
                 print('Retry=', self.s.adc._retry_cnt, 'Redo line/frame on ADCs/lanes', failed_chips)
-                self.alignLineClock_darby(failed_chips) # retry using my functions again
-                self.alignFrameClock_darby(failed_chips) # retry using my functions again
-                return self.rampTest_darby(chipsel=chipsel, nchecks=nchecks, retry=retry) # retry using my functions again
+                self.alignLineClock_discover_snap(failed_chips) # retry using my functions again
+                self.alignFrameClock_discover_snap(failed_chips) # retry using my functions again
+                return self.rampTest_discover_snap(chipsel=chipsel, nchecks=nchecks, retry=retry) # retry using my functions again
         return failed_chips
 
 
-    def align_adc_darby(self, chipsel=None, chip_lanes=None, ker_size=5, retry=True, nchecks=300, force=False, verify=True):
+    def align_adc_discover_snap(self, chipsel=None, chip_lanes=None, ker_size=5, retry=True, nchecks=300, force=False, verify=True):
         """
         Align clock and data lanes of ADC. (Sourced from hera_corr_f.)
         """
@@ -254,18 +254,18 @@ class Spectrometer(object):
             self.s._set_adc_status(0)
         if self.s.adc_is_configured():
             return
-        fails = self.alignLineClock_darby(chipsel=chipsel, chip_lanes=chip_lanes, ker_size=ker_size)
+        fails = self.alignLineClock_discover_snap(chipsel=chipsel, chip_lanes=chip_lanes, ker_size=ker_size)
         if len(fails) > 0:
             #self.logger.warning("alignLineClock failed on: " + str(fails))
-            print('WARNING: alignLineClock_darby failed on:', fails)
-        fails = self.alignFrameClock_darby(chipsel=chipsel, chip_lanes=chip_lanes, retry=retry)
+            print('WARNING: alignLineClock_discover_snap failed on:', fails)
+        fails = self.alignFrameClock_discover_snap(chipsel=chipsel, chip_lanes=chip_lanes, retry=retry)
         if len(fails) > 0:
             self.logger.warning("alignFrameClock failed on: " + str(fails))
-            print('WARNING: alignFrameClock_darby failed on:', fails)
-        fails = self.rampTest_darby(chipsel=chipsel, nchecks=nchecks, retry=False)
+            print('WARNING: alignFrameClock_discover_snap failed on:', fails)
+        fails = self.rampTest_discover_snap(chipsel=chipsel, nchecks=nchecks, retry=False)
         if len(fails) > 0:
             #self.logger.warning("rampTest failed on: " + str(fails))
-            print('WARNING: rampTest_darby failed on:', fails)
+            print('WARNING: rampTest_discover_snap failed on:', fails)
         else:
             self.s._set_adc_status(1)  # record status
         if verify:
@@ -295,13 +295,13 @@ class Spectrometer(object):
         # Initialize and align the Nth ADC
         while self.s.adc_is_configured() == 0:
             self.s.adc.init()
-            self.align_adc_darby(chipsel=chipsel,
-                                chip_lanes=chip_lanes, 
-                                ker_size=ker_size, 
-                                retry=retry, 
-                                nchecks=nchecks, 
-                                force=force, 
-                                verify=verify)
+            self.align_adc_discover_snap(chipsel=chipsel,
+                                        chip_lanes=chip_lanes, 
+                                        ker_size=ker_size, 
+                                        retry=retry, 
+                                        nchecks=nchecks, 
+                                        force=force, 
+                                        verify=verify)
         
         # Initialize other blocks and both correlators
         try:
