@@ -1,11 +1,3 @@
-# Things to address:
-#### UnicodeDecodeError in s.initialize
-#### Other things to be added to PrimaryHDU
-#### The use of hera_corr_f
-#### The issue of needing to program from both casperfpga and SnapFengine
-#### Which SNAP board is being used
-
-
 import casperfpga
 from hera_corr_f import SnapFengine
 import ugradio
@@ -253,7 +245,9 @@ class Spectrometer(object):
 
 
     def align_adc_darby(self, chipsel=None, chip_lanes=None, ker_size=5, retry=True, nchecks=300, force=False, verify=True):
-        """Align clock and data lanes of ADC."""
+        """
+        Align clock and data lanes of ADC. (Sourced from hera_corr_f.)
+        """
         if force:
             self.s._set_adc_status(0)
         if self.s.adc_is_configured():
@@ -540,3 +534,11 @@ class Spectrometer(object):
         # Save the output file
         hdulist.writeto(filename, overwrite=True)
         hdulist.close()
+
+
+# Things to address:
+#### UnicodeDecodeError in s.initialize()
+#### Other things to be added to PrimaryHDU
+#### The use of hera_corr_f
+#### The issue of needing to program from both casperfpga and SnapFengine
+#### Which SNAP board is being used
