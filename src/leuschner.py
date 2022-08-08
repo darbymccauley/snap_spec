@@ -543,4 +543,3 @@ class Spectrometer(object):
 #### Other things to be added to PrimaryHDU
 #### The use of hera_corr_f
 #### The issue of needing to program from both casperfpga and SnapFengine
-#### Which SNAP board is being used
