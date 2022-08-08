@@ -7,7 +7,7 @@ import argparse
 from leuschner import Spectrometer
 
 parser = argparse.ArgumentParser(description='Run spectrometer.')
-parser.add_argument('snap', types=str, help='which snap to configure to')
+parser.add_argument('snap', type=str, help='which snap to configure to')
 parser.add_argument('fpga', type=str, help='fpg file')
 args = parser.parse_args()
 SNAP = args.snap
@@ -21,7 +21,7 @@ spec = Spectrometer(fpgfile=FPGA)
 
 if SNAP is None:
     spec.initialize()
-elif SNAP is 'discover':
+elif SNAP == 'discover':
     spec.initialize_discover_SNAP(chipsel=[0])
 
 import IPython; IPython.embed()
