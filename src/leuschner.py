@@ -24,7 +24,7 @@ ACC_LEN = 38150
 SPEC_PER_ACC = 8
 
 # Create Spectrometer class
-class Spectrometer(object):
+class Spectrometer:
     """
     Casperfpga interface to the SNAP spectrometer.
     """
