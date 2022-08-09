@@ -21335,3 +21335,15 @@
 08/04/2022 07:54:11 PM - DEBUG - client _line_read_loop() from localhost:7147 completed
 08/04/2022 07:54:11 PM - INFO - Client connect loop for ('localhost', 7147) finished.
 08/04/2022 07:54:25 PM - DEBUG - pickle loaded: /home/pi/.local/lib/python3.9/site-packages/leuschner.py
+08/09/2022 12:39:03 AM - WARNING - VerifyWarning: Keyword name 'SPEC/ACC' is greater than 8 characters or contains characters not allowed by the FITS standard; a HIERARCH card will be created.
+08/09/2022 12:59:53 AM - WARNING - VerifyWarning: Card is too long, comment will be truncated.
+08/09/2022 01:29:17 AM - WARNING - VerifyWarning: Keyword name 'SPEC/ACC' is greater than 8 characters or contains characters not allowed by the FITS standard; a HIERARCH card will be created.
+08/09/2022 01:29:37 AM - WARNING - VerifyWarning: Card is too long, comment will be truncated.
+08/09/2022 01:37:29 AM - WARNING - VerifyWarning: Keyword name 'SPEC/ACC' is greater than 8 characters or contains characters not allowed by the FITS standard; a HIERARCH card will be created.
+08/09/2022 01:56:02 AM - WARNING - VerifyWarning: Keyword name 'SPEC/ACC' is greater than 8 characters or contains characters not allowed by the FITS standard; a HIERARCH card will be created.
+08/09/2022 01:57:34 AM - WARNING - VerifyWarning: Card is too long, comment will be truncated.
+08/09/2022 02:04:00 AM - WARNING - VerifyWarning: Keyword name 'SPEC/ACC' is greater than 8 characters or contains characters not allowed by the FITS standard; a HIERARCH card will be created.
+08/09/2022 02:04:49 AM - WARNING - VerifyWarning: Card is too long, comment will be truncated.
+08/09/2022 02:05:15 AM - WARNING - VerifyWarning: Keyword name 'SPEC/ACC' is greater than 8 characters or contains characters not allowed by the FITS standard; a HIERARCH card will be created.
+08/09/2022 02:06:00 AM - WARNING - VerifyWarning: Card is too long, comment will be truncated.
+08/09/2022 02:06:06 AM - WARNING - VerifyWarning: Keyword name 'SPEC/ACC' is greater than 8 characters or contains characters not allowed by the FITS standard; a HIERARCH card will be created.

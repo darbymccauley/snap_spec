@@ -9,6 +9,7 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 from astropy.time import Time
 from astropy.io import fits
+import tqdm
 import random
 
 
@@ -84,8 +85,6 @@ class Spectrometer(object):
             logging.warning('SNAP is not programmed and running.')
             return False
 
-    def test_function(self, name):
-        print('Hello'+str(name))
   
     def program(self):
         """
@@ -95,7 +94,7 @@ class Spectrometer(object):
         self.s.fpga.upload_to_ram_and_program(self.fpgfile)
 
  
-    def alignFrameClock_darby(self, chipsel=None, chip_lanes=None, retry=True):
+    def alignFrameClock_discover_snap(self, chipsel=None, chip_lanes=None, retry=True):
         """
         Align frame clock with data frame. (Sourced from hera_corr_f.)
         
@@ -151,12 +150,12 @@ class Spectrometer(object):
                 #self.logger.info('retry=%d/%d redo Line on ADCs/lanes: %s' % \
                             #(self.s.adc._retry_cnt, self.s.adc._retry, failed_chips))
                 print('retrying: ADCs/lanes:', failed_chips)
-                self.alignLineClock_darby(chipsel=failed_chips) # retry using my functions again
-                return self.alignFrameClock_darby(chipsel=failed_chips) # retry using my functions again
+                self.alignLineClock_discover_snap(chipsel=failed_chips) # retry using my functions again
+                return self.alignFrameClock_discover_snap(chipsel=failed_chips) # retry using my functions again
         return failed_chips
 
 
-    def alignLineClock_darby(self, chipsel=None, chip_lanes=None, ker_size=5):
+    def alignLineClock_discover_snap(self, chipsel=None, chip_lanes=None, ker_size=5):
         """
         Find a tap for the line clock that produces reliable bit
         capture from ADC.
@@ -198,7 +197,7 @@ class Spectrometer(object):
         return {} # success
 
 
-    def rampTest_darby(self, chipsel=None, nchecks=300, retry=False):
+    def rampTest_discover_snap(self, chipsel=None, nchecks=300, retry=False):
         """
         (Sourced from hera_corr_f.)
         
@@ -240,13 +239,13 @@ class Spectrometer(object):
                 #self.logger.info('retry=%d/%d redo Line/Frame on ADCs/lanes: %s' % \
                            #(self.s.adc._retry_cnt, self.s.adc._retry, failed_chips))
                 print('Retry=', self.s.adc._retry_cnt, 'Redo line/frame on ADCs/lanes', failed_chips)
-                self.alignLineClock_darby(failed_chips) # retry using my functions again
-                self.alignFrameClock_darby(failed_chips) # retry using my functions again
-                return self.rampTest_darby(chipsel=chipsel, nchecks=nchecks, retry=retry) # retry using my functions again
+                self.alignLineClock_discover_snap(failed_chips) # retry using my functions again
+                self.alignFrameClock_discover_snap(failed_chips) # retry using my functions again
+                return self.rampTest_discover_snap(chipsel=chipsel, nchecks=nchecks, retry=retry) # retry using my functions again
         return failed_chips
 
 
-    def align_adc_darby(self, chipsel=None, chip_lanes=None, ker_size=5, retry=True, nchecks=300, force=False, verify=True):
+    def align_adc_discover_snap(self, chipsel=None, chip_lanes=None, ker_size=5, retry=True, nchecks=300, force=False, verify=True):
         """
         Align clock and data lanes of ADC. (Sourced from hera_corr_f.)
         """
@@ -254,18 +253,18 @@ class Spectrometer(object):
             self.s._set_adc_status(0)
         if self.s.adc_is_configured():
             return
-        fails = self.alignLineClock_darby(chipsel=chipsel, chip_lanes=chip_lanes, ker_size=ker_size)
+        fails = self.alignLineClock_discover_snap(chipsel=chipsel, chip_lanes=chip_lanes, ker_size=ker_size)
         if len(fails) > 0:
             #self.logger.warning("alignLineClock failed on: " + str(fails))
-            print('WARNING: alignLineClock_darby failed on:', fails)
-        fails = self.alignFrameClock_darby(chipsel=chipsel, chip_lanes=chip_lanes, retry=retry)
+            print('WARNING: alignLineClock_discover_snap failed on:', fails)
+        fails = self.alignFrameClock_discover_snap(chipsel=chipsel, chip_lanes=chip_lanes, retry=retry)
         if len(fails) > 0:
             self.logger.warning("alignFrameClock failed on: " + str(fails))
-            print('WARNING: alignFrameClock_darby failed on:', fails)
-        fails = self.rampTest_darby(chipsel=chipsel, nchecks=nchecks, retry=False)
+            print('WARNING: alignFrameClock_discover_snap failed on:', fails)
+        fails = self.rampTest_discover_snap(chipsel=chipsel, nchecks=nchecks, retry=False)
         if len(fails) > 0:
             #self.logger.warning("rampTest failed on: " + str(fails))
-            print('WARNING: rampTest_darby failed on:', fails)
+            print('WARNING: rampTest_discover_snap failed on:', fails)
         else:
             self.s._set_adc_status(1)  # record status
         if verify:
@@ -295,13 +294,13 @@ class Spectrometer(object):
         # Initialize and align the Nth ADC
         while self.s.adc_is_configured() == 0:
             self.s.adc.init()
-            self.align_adc_darby(chipsel=chipsel,
-                                chip_lanes=chip_lanes, 
-                                ker_size=ker_size, 
-                                retry=retry, 
-                                nchecks=nchecks, 
-                                force=force, 
-                                verify=verify)
+            self.align_adc_discover_snap(chipsel=chipsel,
+                                        chip_lanes=chip_lanes, 
+                                        ker_size=ker_size, 
+                                        retry=retry, 
+                                        nchecks=nchecks, 
+                                        force=force, 
+                                        verify=verify)
         
         # Initialize other blocks and both correlators
         try:
@@ -443,7 +442,7 @@ class Spectrometer(object):
             return spec
 
 
-    def read_spec(self, filename, nspec, coords, coord_sys='ga'):
+    def read_spec(self, filename, nspec, coords, coord_sys='ga', progress=False):
         """
         Recieves spectrometer data from the Leuschner spectrometer and 
         saves it to a FITS file. The primary HDU contains information about
@@ -462,6 +461,7 @@ class Spectrometer(object):
         - coord_sys: Coordinate system used for ''coords''.
             Default is galactic coordinates. Takes in either galactic 
             ('ga') or equatorial ('eq') coordinate systems.
+        - progress: shows progress bar for data collection.
         Returns:
         - FITS file with autocorrelated spectrometer data.
         """
@@ -475,24 +475,38 @@ class Spectrometer(object):
         data = {}
         
         # Collect spectra
-        for ninteg in range(nspec):
-            cnt_0 = self.wait_for_cnt()
-            for name, corr, (stream_1, stream_2) in spectra: # read the spectra from both corrs
-                data[name] = self.get_new_corr(corr, stream_1, stream_2).real
-            cnt_1 = self.s.corr_1.read_uint('acc_cnt')
-            assert cnt_0 + 1 == cnt_1 # assert corr_0's count increased and matches corr_1's count
+        if progress is True:
+            for ninteg in tqdm.tqdm(range(nspec), desc='Progress'):
+                cnt_0 = self.wait_for_cnt()        
+                for name, corr, (stream_1, stream_2) in spectra: # read the spectra from both corrs
+                    data[name] = self.get_new_corr(corr, stream_1, stream_2).real
+                cnt_1 = self.s.corr_1.read_uint('acc_cnt')
+                assert cnt_0 + 1 == cnt_1 # assert corr_0's count increased and matches corr_1's count
 
-            # Make BinTableHDU and append collected data
-            data_list = [fits.Column(name=name, format='D', array=data[name]) for name, _, _ in spectra]
-            bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
-            hdulist.append(bintablehdu)
+                # Make BinTableHDU and append collected data
+                data_list = [fits.Column(name=name, format='D', array=data[name]) for name, _, _ in spectra]
+                bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
+                hdulist.append(bintablehdu)
+
+        if progress is False:
+            for ninteg in range(nspec):
+                cnt_0 = self.wait_for_cnt()
+                for name, corr, (stream_1, stream_2) in spectra: # read the spectra from both corrs
+                    data[name] = self.get_new_corr(corr, stream_1, stream_2).real
+                cnt_1 = self.s.corr_1.read_uint('acc_cnt')
+                assert cnt_0 + 1 == cnt_1 # assert corr_0's count increased and matches corr_1's count
+
+                # Make BinTableHDU and append collected data
+                data_list = [fits.Column(name=name, format='D', array=data[name]) for name, _, _ in spectra]
+                bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
+                hdulist.append(bintablehdu)
            
         # Save the output file
         hdulist.writeto(filename, overwrite=True)
         hdulist.close()
 
 
-    def read_corr(self, filename, nspec, coords, coord_sys='ga'):
+    def read_corr(self, filename, nspec, coords, coord_sys='ga', progress=False):
         """
         Recieves correlation data from the Leuschner spectrometer and 
         saves it to a FITS file. The primary HDU contains information about
@@ -511,27 +525,50 @@ class Spectrometer(object):
         - coord_sys: Coordinate system used for ''coords''.
             Default is galactic coordinates. Takes in either galactic 
             ('ga') or equatorial ('eq') coordinate systems.
+        - progress: shows progress bar for data collection.
+        
         Returns:
         - FITS file with correlated spectrometer data.
         """
         primaryhdu = self.make_PrimaryHDU(nspec, coords, coord_sys)
         hdulist = fits.HDUList(hdus=[primaryhdu])
 
-        # Read some number of spectra to a FITS file
-        ninteg = 0
-        while ninteg < nspec:
-            spectra = [('cross', (self.stream_1, self.stream_2))] # (0, 1)
-            data_list = []
-            for name, (stream_1, stream_2) in spectra:
-                cross = self.s.corr_0.get_new_corr(stream_1, stream_2)
-                cross_real, cross_imag = cross.real, cross.imag
-            
-            data_list.append(fits.Column(name=name+'_real', format='D', array=cross_real))
-            data_list.append(fits.Column(name=name+'_imag', format='D', array=cross_imag))
+        if progress is True:
+            pbar = tqdm.tqdm(total=nspec, desc='Progress')
+            # Read some number of spectra to a FITS file
+            ninteg = 0
+            while ninteg < nspec:
+                spectra = [('cross', (self.stream_1, self.stream_2))] # (0, 1)
+                data_list = []
+                for name, (stream_1, stream_2) in spectra:
+                    cross = self.s.corr_0.get_new_corr(stream_1, stream_2)
+                    cross_real, cross_imag = cross.real, cross.imag
+             
+                data_list.append(fits.Column(name=name+'_real', format='D', array=cross_real))
+                data_list.append(fits.Column(name=name+'_imag', format='D', array=cross_imag))
+    
+                bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
+                hdulist.append(bintablehdu)
+                ninteg += 1
+                pbar.update()
+            pbar.close()
 
-            bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
-            hdulist.append(bintablehdu)
-            ninteg += 1
+        if progress is False:
+            # Read some number of spectra to a FITS file
+            ninteg = 0
+            while ninteg < nspec:
+                spectra = [('cross', (self.stream_1, self.stream_2))] # (0, 1)
+                data_list = []
+                for name, (stream_1, stream_2) in spectra:
+                    cross = self.s.corr_0.get_new_corr(stream_1, stream_2)
+                    cross_real, cross_imag = cross.real, cross.imag
+            
+                data_list.append(fits.Column(name=name+'_real', format='D', array=cross_real))
+                data_list.append(fits.Column(name=name+'_imag', format='D', array=cross_imag))
+
+                bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
+                hdulist.append(bintablehdu)
+                ninteg += 1
  
         # Save the output file
         hdulist.writeto(filename, overwrite=True)
@@ -543,4 +580,3 @@ class Spectrometer(object):
 #### Other things to be added to PrimaryHDU
 #### The use of hera_corr_f
 #### The issue of needing to program from both casperfpga and SnapFengine
-#### Which SNAP board is being used

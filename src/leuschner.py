@@ -9,6 +9,7 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 from astropy.time import Time
 from astropy.io import fits
+import tqdm
 import random
 
 
@@ -84,8 +85,6 @@ class Spectrometer(object):
             logging.warning('SNAP is not programmed and running.')
             return False
 
-    def test_function(self, name):
-        print('Hello'+str(name))
   
     def program(self):
         """
@@ -443,7 +442,7 @@ class Spectrometer(object):
             return spec
 
 
-    def read_spec(self, filename, nspec, coords, coord_sys='ga'):
+    def read_spec(self, filename, nspec, coords, coord_sys='ga', progress=False):
         """
         Recieves spectrometer data from the Leuschner spectrometer and 
         saves it to a FITS file. The primary HDU contains information about
@@ -462,6 +461,7 @@ class Spectrometer(object):
         - coord_sys: Coordinate system used for ''coords''.
             Default is galactic coordinates. Takes in either galactic 
             ('ga') or equatorial ('eq') coordinate systems.
+        - progress: shows progress bar for data collection.
         Returns:
         - FITS file with autocorrelated spectrometer data.
         """
@@ -475,24 +475,38 @@ class Spectrometer(object):
         data = {}
         
         # Collect spectra
-        for ninteg in range(nspec):
-            cnt_0 = self.wait_for_cnt()
-            for name, corr, (stream_1, stream_2) in spectra: # read the spectra from both corrs
-                data[name] = self.get_new_corr(corr, stream_1, stream_2).real
-            cnt_1 = self.s.corr_1.read_uint('acc_cnt')
-            assert cnt_0 + 1 == cnt_1 # assert corr_0's count increased and matches corr_1's count
+        if progress is True:
+            for ninteg in tqdm.tqdm(range(nspec), desc='Progress'):
+                cnt_0 = self.wait_for_cnt()        
+                for name, corr, (stream_1, stream_2) in spectra: # read the spectra from both corrs
+                    data[name] = self.get_new_corr(corr, stream_1, stream_2).real
+                cnt_1 = self.s.corr_1.read_uint('acc_cnt')
+                assert cnt_0 + 1 == cnt_1 # assert corr_0's count increased and matches corr_1's count
 
-            # Make BinTableHDU and append collected data
-            data_list = [fits.Column(name=name, format='D', array=data[name]) for name, _, _ in spectra]
-            bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
-            hdulist.append(bintablehdu)
+                # Make BinTableHDU and append collected data
+                data_list = [fits.Column(name=name, format='D', array=data[name]) for name, _, _ in spectra]
+                bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
+                hdulist.append(bintablehdu)
+
+        if progress is False:
+            for ninteg in range(nspec):
+                cnt_0 = self.wait_for_cnt()
+                for name, corr, (stream_1, stream_2) in spectra: # read the spectra from both corrs
+                    data[name] = self.get_new_corr(corr, stream_1, stream_2).real
+                cnt_1 = self.s.corr_1.read_uint('acc_cnt')
+                assert cnt_0 + 1 == cnt_1 # assert corr_0's count increased and matches corr_1's count
+
+                # Make BinTableHDU and append collected data
+                data_list = [fits.Column(name=name, format='D', array=data[name]) for name, _, _ in spectra]
+                bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
+                hdulist.append(bintablehdu)
            
         # Save the output file
         hdulist.writeto(filename, overwrite=True)
         hdulist.close()
 
 
-    def read_corr(self, filename, nspec, coords, coord_sys='ga'):
+    def read_corr(self, filename, nspec, coords, coord_sys='ga', progress=False):
         """
         Recieves correlation data from the Leuschner spectrometer and 
         saves it to a FITS file. The primary HDU contains information about
@@ -511,27 +525,50 @@ class Spectrometer(object):
         - coord_sys: Coordinate system used for ''coords''.
             Default is galactic coordinates. Takes in either galactic 
             ('ga') or equatorial ('eq') coordinate systems.
+        - progress: shows progress bar for data collection.
+        
         Returns:
         - FITS file with correlated spectrometer data.
         """
         primaryhdu = self.make_PrimaryHDU(nspec, coords, coord_sys)
         hdulist = fits.HDUList(hdus=[primaryhdu])
 
-        # Read some number of spectra to a FITS file
-        ninteg = 0
-        while ninteg < nspec:
-            spectra = [('cross', (self.stream_1, self.stream_2))] # (0, 1)
-            data_list = []
-            for name, (stream_1, stream_2) in spectra:
-                cross = self.s.corr_0.get_new_corr(stream_1, stream_2)
-                cross_real, cross_imag = cross.real, cross.imag
-            
-            data_list.append(fits.Column(name=name+'_real', format='D', array=cross_real))
-            data_list.append(fits.Column(name=name+'_imag', format='D', array=cross_imag))
+        if progress is True:
+            pbar = tqdm.tqdm(total=nspec, desc='Progress')
+            # Read some number of spectra to a FITS file
+            ninteg = 0
+            while ninteg < nspec:
+                spectra = [('cross', (self.stream_1, self.stream_2))] # (0, 1)
+                data_list = []
+                for name, (stream_1, stream_2) in spectra:
+                    cross = self.s.corr_0.get_new_corr(stream_1, stream_2)
+                    cross_real, cross_imag = cross.real, cross.imag
+             
+                data_list.append(fits.Column(name=name+'_real', format='D', array=cross_real))
+                data_list.append(fits.Column(name=name+'_imag', format='D', array=cross_imag))
+    
+                bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
+                hdulist.append(bintablehdu)
+                ninteg += 1
+                pbar.update()
+            pbar.close()
 
-            bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
-            hdulist.append(bintablehdu)
-            ninteg += 1
+        if progress is False:
+            # Read some number of spectra to a FITS file
+            ninteg = 0
+            while ninteg < nspec:
+                spectra = [('cross', (self.stream_1, self.stream_2))] # (0, 1)
+                data_list = []
+                for name, (stream_1, stream_2) in spectra:
+                    cross = self.s.corr_0.get_new_corr(stream_1, stream_2)
+                    cross_real, cross_imag = cross.real, cross.imag
+            
+                data_list.append(fits.Column(name=name+'_real', format='D', array=cross_real))
+                data_list.append(fits.Column(name=name+'_imag', format='D', array=cross_imag))
+
+                bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
+                hdulist.append(bintablehdu)
+                ninteg += 1
  
         # Save the output file
         hdulist.writeto(filename, overwrite=True)
