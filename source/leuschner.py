@@ -24,7 +24,7 @@ ACC_LEN = 38150
 SPEC_PER_ACC = 8
 
 # Create Spectrometer class
-class Spectrometer(object):
+class Spectrometer:
     """
     Casperfpga interface to the SNAP spectrometer.
     """
@@ -92,6 +92,7 @@ class Spectrometer(object):
         """
         self.fpga.upload_to_ram_and_program(self.fpgfile)
         self.s.fpga.upload_to_ram_and_program(self.fpgfile)
+        logging.info('FPGA programmed.')
 
  
     def alignFrameClock_discover_snap(self, chipsel=None, chip_lanes=None, retry=True):
@@ -111,9 +112,9 @@ class Spectrometer(object):
                     chip_lanes = {chip:self.s.adc.laneList for chip in self.s.adc.adcList}
                 elif chipsel is not None:
                     chip_lanes = {chip:self.s.adc.laneList for chip in chipsel}
-        #self.logger.debug('Aligning frame clock on ADCs/lanes: %s' % \
-                          #str(chips_lanes))
-        print('Aligning frame clock on ADCs/lanes:', chip_lanes)
+        logging.debug('Aligning frame clock on ADCs/lanes: %s' % \
+                        str(chip_lanes))
+
         failed_chips = {}
         self.s.adc.setDemux(numChannel=1)
         for chip, lanes in chip_lanes.items():
@@ -147,9 +148,8 @@ class Spectrometer(object):
         if len(failed_chips) > 0 and retry:
             if self.s.adc._retry_cnt < self.s.adc._retry:
                 self.s.adc._retry_cnt += 1
-                #self.logger.info('retry=%d/%d redo Line on ADCs/lanes: %s' % \
-                            #(self.s.adc._retry_cnt, self.s.adc._retry, failed_chips))
-                print('retrying: ADCs/lanes:', failed_chips)
+                logging.info('retry=%d/%d redo Line on ADCs/lanes: %s' % \
+                            (self.s.adc._retry_cnt, self.s.adc._retry, failed_chips))
                 self.alignLineClock_discover_snap(chipsel=failed_chips) # retry using my functions again
                 return self.alignFrameClock_discover_snap(chipsel=failed_chips) # retry using my functions again
         return failed_chips
@@ -173,14 +173,12 @@ class Spectrometer(object):
                     chip_lanes = {chip:self.s.adc.laneList for chip in self.s.adc.adcList}
                 elif chipsel is not None:
                     chip_lanes = {chip:self.s.adc.laneList for chip in chipsel}
-        #self.logger.info('Aligning line clock on ADCs/lanes: %s' % \
-                          #str(chips_lanes))
-        print('Aligning lane clock on ADCs/lanes:', chip_lanes)
+        logging.info('Aligning line clock on ADCs/lanes: %s' % \
+                        str(chip_lanes))
         try:
             self.s.adc._find_working_taps(ker_size=ker_size)
         except(RuntimeError):
-            #self.logger.info('Failed to find working taps.')
-            print('Failed to find working taps.')
+            logging.info('Failed to find working taps.')
             return chip_lanes # total failure
         self.s.adc.setDemux(numChannel=1)
         for chip, lanes in chip_lanes.items():
@@ -191,8 +189,7 @@ class Spectrometer(object):
                 self.s.adc.delay(tap, chip, L)
             # Remove from future consideration if tap doesn't work out
             self.s.adc.working_taps[chip] = taps[np.abs(taps - tap) >= ker_size//2]
-            #self.logger.info('Setting ADC=%d tap=%s' % (chip, tap))
-            print('Setting ADC=', chip, tap)
+            logging.info('Setting ADC=%d tap=%s' % (chip, tap))
         self.s.adc.setDemux(numChannel=self.s.adc.num_chans)
         return {} # success
 
@@ -213,8 +210,7 @@ class Spectrometer(object):
             chips = self.s.adc.adcList
         elif chipsel is not None:
             chips = chipsel
-        #self.logger.debug('Ramp test on ADCs: %s' % str(chips))
-        print('Ramp test on ADCs:', chips)
+        logging.debug('Ramp test on ADCs: %s' % str(chips))
         failed_chips = {}
         self.s.adc.setDemux(numChannel=1)
         predicted = np.arange(128).reshape(-1,1)
@@ -236,9 +232,8 @@ class Spectrometer(object):
         if len(failed_chips) > 0 and retry:
             if self.s.adc._retry_cnt < self.s.adc._retry:
                 self.s.adc._retry_cnt += 1  
-                #self.logger.info('retry=%d/%d redo Line/Frame on ADCs/lanes: %s' % \
-                           #(self.s.adc._retry_cnt, self.s.adc._retry, failed_chips))
-                print('Retry=', self.s.adc._retry_cnt, 'Redo line/frame on ADCs/lanes', failed_chips)
+                logging.info('retry=%d/%d redo Line/Frame on ADCs/lanes: %s' % \
+                                (self.s.adc._retry_cnt, self.s.adc._retry, failed_chips))
                 self.alignLineClock_discover_snap(failed_chips) # retry using my functions again
                 self.alignFrameClock_discover_snap(failed_chips) # retry using my functions again
                 return self.rampTest_discover_snap(chipsel=chipsel, nchecks=nchecks, retry=retry) # retry using my functions again
@@ -255,16 +250,13 @@ class Spectrometer(object):
             return
         fails = self.alignLineClock_discover_snap(chipsel=chipsel, chip_lanes=chip_lanes, ker_size=ker_size)
         if len(fails) > 0:
-            #self.logger.warning("alignLineClock failed on: " + str(fails))
-            print('WARNING: alignLineClock_discover_snap failed on:', fails)
+            logging.warning("alignLineClock failed on: " + str(fails))
         fails = self.alignFrameClock_discover_snap(chipsel=chipsel, chip_lanes=chip_lanes, retry=retry)
         if len(fails) > 0:
-            self.logger.warning("alignFrameClock failed on: " + str(fails))
-            print('WARNING: alignFrameClock_discover_snap failed on:', fails)
+            logging.warning("alignFrameClock failed on: " + str(fails))
         fails = self.rampTest_discover_snap(chipsel=chipsel, nchecks=nchecks, retry=False)
         if len(fails) > 0:
-            #self.logger.warning("rampTest failed on: " + str(fails))
-            print('WARNING: rampTest_discover_snap failed on:', fails)
+            logging.warning("rampTest failed on: " + str(fails))
         else:
             self.s._set_adc_status(1)  # record status
         if verify:
@@ -283,7 +275,7 @@ class Spectrometer(object):
         if chipsel is None:
             self.initialize()
         
-        #self.logger.info('Initializing the Discover SNAP...')
+        logging.info('Initializing SNAP...')
 
         # Program fpga
         self.program()
@@ -309,14 +301,14 @@ class Spectrometer(object):
             self.s.pfb.initialize()
             self.s.corr_0.initialize()
             self.s.corr_1.initialize()
-        #self.logger.info('Spectrometer initialized.')
+        logging.info('Spectrometer initialized.')
 
 
     def initialize(self):
         """
         Programs the fpga on the SNAP and initializes the spectrometer.
         """
-        #self.logger.info('Initializing the spectrometer...')
+        logging.info('Initializing the spectrometer...')
         
         # Program fpga
         self.program()
@@ -336,7 +328,7 @@ class Spectrometer(object):
             self.s.pfb.initialize()
             self.s.corr_0.initialize()
             self.s.corr_1.initialize()
-        #self.logger.info('Spectrometer initialized.')
+        logging.info('Spectrometer initialized.')
 
 
     def make_PrimaryHDU(self, nspec, coords, coord_sys='ga'):
@@ -476,6 +468,7 @@ class Spectrometer(object):
         
         # Collect spectra
         if progress is True:
+            logging.info('Reading %s spectra from the SNAP' % str(nspec))
             for ninteg in tqdm.tqdm(range(nspec), desc='Progress'):
                 cnt_0 = self.wait_for_cnt()        
                 for name, corr, (stream_1, stream_2) in spectra: # read the spectra from both corrs
@@ -489,6 +482,7 @@ class Spectrometer(object):
                 hdulist.append(bintablehdu)
 
         if progress is False:
+            logging.info('Reading %s spectra from the SNAP' % str(nspec))
             for ninteg in range(nspec):
                 cnt_0 = self.wait_for_cnt()
                 for name, corr, (stream_1, stream_2) in spectra: # read the spectra from both corrs
@@ -534,8 +528,8 @@ class Spectrometer(object):
         hdulist = fits.HDUList(hdus=[primaryhdu])
 
         if progress is True:
+            logging.info('Reading %s spectra from the SNAP' % str(nspec))
             pbar = tqdm.tqdm(total=nspec, desc='Progress')
-            # Read some number of spectra to a FITS file
             ninteg = 0
             while ninteg < nspec:
                 spectra = [('cross', (self.stream_1, self.stream_2))] # (0, 1)
@@ -554,7 +548,7 @@ class Spectrometer(object):
             pbar.close()
 
         if progress is False:
-            # Read some number of spectra to a FITS file
+            logging.info('Reading %s spectra from the SNAP' % str(nspec))
             ninteg = 0
             while ninteg < nspec:
                 spectra = [('cross', (self.stream_1, self.stream_2))] # (0, 1)
@@ -578,5 +572,4 @@ class Spectrometer(object):
 # Things to address:
 #### UnicodeDecodeError in s.initialize()
 #### Other things to be added to PrimaryHDU
-#### The use of hera_corr_f
-#### The issue of needing to program from both casperfpga and SnapFengine
+#### logging stuff
