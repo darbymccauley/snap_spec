@@ -4,7 +4,7 @@ import casperfpga
 from hera_corr_f import SnapFengine
 import argparse
 
-from leuschner import Spectrometer
+from leuschner import Discover_Spectrometer, Spectrometer
 
 parser = argparse.ArgumentParser(description='Run spectrometer.')
 parser.add_argument('snap', type=str, help='which snap to configure to')
@@ -17,11 +17,12 @@ fpga = casperfpga.CasperFpga('localhost')
 fpga.upload_to_ram_and_program(FPGA)
 s = SnapFengine('localhost', transport='default')
 
-spec = Spectrometer(fpgfile=FPGA)
 
 if SNAP is None:
+    spec = Spectrometer(fpgfile=FPGA)
     spec.initialize()
-elif SNAP == 'discover':
-    spec.initialize_discover_SNAP(chipsel=[0])
+elif SNAP == 'Discover':
+    spec = Discover_Spectrometer(fpgfile=FPGA)
+    spec.initialize()
 
 import IPython; IPython.embed()
