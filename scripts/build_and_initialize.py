@@ -18,11 +18,13 @@ fpga.upload_to_ram_and_program(FPGA)
 s = SnapFengine('localhost', transport='default')
 
 
-if SNAP is None:
+if SNAP == 'Default':
     spec = Spectrometer(fpgfile=FPGA)
     spec.initialize()
 elif SNAP == 'Discover':
     spec = Discover_Spectrometer(fpgfile=FPGA)
     spec.initialize()
+else:
+    raise IOError('Snap argument not recognized. Please specify SNAP type: Default or Discover.')
 
 import IPython; IPython.embed()
