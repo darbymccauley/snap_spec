@@ -30,16 +30,7 @@ class Discover_Spectrometer:
     Casperfpga interface to the SNAP spectrometer.
     """
 
-    def __init__(self, 
-                host=HOST, 
-                fpgfile=FPGFILE, 
-                transport=TRANSPORT, 
-                stream_1=STREAM_1, 
-                stream_2=STREAM_2, 
-                logger=None, 
-                acc_len=ACC_LEN, 
-                spec_per_acc=SPEC_PER_ACC,
-                chip_sel=CHIP_SEL_DISCOVER_SNAP):
+    def __init__(self, host=HOST, fpgfile=FPGFILE, transport=TRANSPORT, stream_1=STREAM_1, stream_2=STREAM_2, logger=None, acc_len=ACC_LEN, spec_per_acc=SPEC_PER_ACC, chip_sel=CHIP_SEL_DISCOVER_SNAP):
         """
         Create the interface to the SNAP.
 
@@ -111,7 +102,7 @@ class Discover_Spectrometer:
         logging.info('FPGA programmed.')
 
  
-    def alignFrameClock(self, chipsel=chip_sel, chip_lanes=None, retry=True):
+    def alignFrameClock(self, chipsel=CHIP_SEL_DISCOVER_SNAP, chip_lanes=None, retry=True):
         """
         Align frame clock with data frame. (Sourced from hera_corr_f.)
         
@@ -171,7 +162,7 @@ class Discover_Spectrometer:
         return failed_chips
 
 
-    def alignLineClock(self, chipsel=chip_sel, chip_lanes=None, ker_size=5):
+    def alignLineClock(self, chipsel=CHIP_SEL_DISCOVER_SNAP, chip_lanes=None, ker_size=5):
         """
         Find a tap for the line clock that produces reliable bit
         capture from ADC.
@@ -210,7 +201,7 @@ class Discover_Spectrometer:
         return {} # success
 
 
-    def rampTest(self, chipsel=chip_sel, nchecks=300, retry=False):
+    def rampTest(self, chipsel=CHIP_SEL_DISCOVER_SNAP, nchecks=300, retry=False):
         """
         (Sourced from hera_corr_f.)
         
@@ -256,7 +247,7 @@ class Discover_Spectrometer:
         return failed_chips
 
 
-    def align_adc(self, chipsel=chip_sel, chip_lanes=None, ker_size=5, retry=True, nchecks=300, force=False, verify=True):
+    def align_adc(self, chipsel=CHIP_SEL_DISCOVER_SNAP, chip_lanes=None, ker_size=5, retry=True, nchecks=300, force=False, verify=True):
         """
         Align clock and data lanes of ADC. (Sourced from hera_corr_f.)
         """
@@ -283,7 +274,7 @@ class Discover_Spectrometer:
         self.s.adc.set_gain(4)
         
 
-    def initialize(self, chipsel=chip_sel, chip_lanes=None, ker_size=5, retry=True, nchecks=300, force=False, verify=True):
+    def initialize(self, chipsel=CHIP_SEL_DISCOVER_SNAP, chip_lanes=None, ker_size=5, retry=True, nchecks=300, force=False, verify=True):
         """
         Program the fpga on the SNAP and initialize the 1st ADC on the
         Discover SNAP board.
@@ -368,7 +359,6 @@ class Discover_Spectrometer:
         header['SPEC/ACC'] = (self.spec_per_acc, 'Spectra per accumulation')
         header['STREAM_1'] = (self.stream_1, 'First ADC port used')
         header['STREAM_2'] = (self.stream_2, 'Second ADC port used')
-        #header['LOGGER'] = (self.logger, 'Logger file')
 
         header['PYTHON'] = (3.8, 'Python version')
         header['SRC'] = ('https://github.com/darbymccauley/Leuschner_Spectrometer.git', 'Source code')
