@@ -391,42 +391,20 @@ class Spectrometer:
         primaryhdu = self.make_PrimaryHDU(nspec, coords, coord_sys)
         hdulist = fits.HDUList(hdus=[primaryhdu])
 
-        if progress is True:
-            logging.info('Reading %s spectra from the SNAP' % str(nspec))
-            pbar = tqdm.tqdm(total=nspec, desc='Progress')
-            ninteg = 0
-            while ninteg < nspec:
-                spectra = [('cross', (self.stream_1, self.stream_2))] # (0, 1)
-                data_list = []
-                for name, (stream_1, stream_2) in spectra:
-                    cross = self.s.corr_0.get_new_corr(stream_1, stream_2)
-                    cross_real, cross_imag = cross.real, cross.imag
-             
-                data_list.append(fits.Column(name=name+'_real', format='D', array=cross_real))
-                data_list.append(fits.Column(name=name+'_imag', format='D', array=cross_imag))
-    
-                bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
-                hdulist.append(bintablehdu)
-                ninteg += 1
-                pbar.update()
-            pbar.close()
+        logging.info('Reading %s spectra from the SNAP' % str(nspec))
+        spectra = [('cross', (self.stream_1, self.stream_2))] # (0, 1)
 
-        if progress is False:
-            logging.info('Reading %s spectra from the SNAP' % str(nspec))
-            ninteg = 0
-            while ninteg < nspec:
-                spectra = [('cross', (self.stream_1, self.stream_2))] # (0, 1)
-                data_list = []
-                for name, (stream_1, stream_2) in spectra:
-                    cross = self.s.corr_0.get_new_corr(stream_1, stream_2)
-                    cross_real, cross_imag = cross.real, cross.imag
-            
-                data_list.append(fits.Column(name=name+'_real', format='D', array=cross_real))
-                data_list.append(fits.Column(name=name+'_imag', format='D', array=cross_imag))
+        # Collect spectra
+        for ninteg in self._progress_bar(nspec, progress):
+            data_list = []
+            for name, (stream_1, stream_2) in spectra:
+                cross = self.s.corr_0.get_new_corr(stream_1, stream_2)
+                cross_real, cross_imag = cross.real, cross.imag
+            data_list.append(fits.Column(name=name+'_real', format='D', array=cross_real))
+            data_list.append(fits.Column(name=name+'_imag', format='D', array=cross_imag))
 
-                bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
-                hdulist.append(bintablehdu)
-                ninteg += 1
+            bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
+            hdulist.append(bintablehdu)
  
         # Save the output file
         hdulist.writeto(filename, overwrite=True)
