@@ -298,6 +298,20 @@ class Spectrometer:
         else:
             return spec
 
+    
+    def _progress_bar(self, nspec, progress=False):
+        """
+        Add a progress bar to keep track of spectra collection.
+        
+        Inputs:
+        - nspec: Number of spectra to collect.
+        - progress: Add progress bar.
+        """
+        if progress == False:
+            return range(nspec)
+        elif progress == True:
+            return tqdm.tqdm(range(nspec), desc='Progress')
+
 
     def read_spec(self, filename, nspec, coords, coord_sys='ga', progress=False):
         """
@@ -332,12 +346,11 @@ class Spectrometer:
         data = {}
         
         # Collect spectra
-        if progress is True:
-            logging.info('Reading %s spectra from the SNAP' % str(nspec))
-            for ninteg in tqdm.tqdm(range(nspec), desc='Progress'):
-                cnt_0 = self.wait_for_cnt()        
-                for name, corr, (stream_1, stream_2) in spectra: # read the spectra from both corrs
-                    data[name] = self.get_new_corr(corr, stream_1, stream_2).real
+        logging.info('Reading %s spectra from the SNAP.' % str(nspec))
+        for ninteg in self._progress_bar(nspec, progress):
+            cnt_0 = self.wait_for_cnt()
+            for name, corr, (stream_1, stream_2) in spectra: # read the spectra from both corrs
+                data[name] = self.get_new_corr(corr, stream_1, stream_2).real
                 cnt_1 = self.s.corr_1.read_uint('acc_cnt')
                 assert cnt_0 + 1 == cnt_1 # assert corr_0's count increased and matches corr_1's count
 
@@ -346,20 +359,6 @@ class Spectrometer:
                 bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
                 hdulist.append(bintablehdu)
 
-        if progress is False:
-            logging.info('Reading %s spectra from the SNAP' % str(nspec))
-            for ninteg in range(nspec):
-                cnt_0 = self.wait_for_cnt()
-                for name, corr, (stream_1, stream_2) in spectra: # read the spectra from both corrs
-                    data[name] = self.get_new_corr(corr, stream_1, stream_2).real
-                cnt_1 = self.s.corr_1.read_uint('acc_cnt')
-                assert cnt_0 + 1 == cnt_1 # assert corr_0's count increased and matches corr_1's count
-
-                # Make BinTableHDU and append collected data
-                data_list = [fits.Column(name=name, format='D', array=data[name]) for name, _, _ in spectra]
-                bintablehdu = fits.BinTableHDU.from_columns(data_list, name='CORR_DATA')
-                hdulist.append(bintablehdu)
-           
         # Save the output file
         hdulist.writeto(filename, overwrite=True)
         hdulist.close()
@@ -432,9 +431,3 @@ class Spectrometer:
         # Save the output file
         hdulist.writeto(filename, overwrite=True)
         hdulist.close()
-
-
-# Things to address:
-#### TEST NEW CLASSES
-#### UnicodeDecodeError in s.initialize()
-#### Other things to be added to PrimaryHDU
