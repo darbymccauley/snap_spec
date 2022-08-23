@@ -28,10 +28,10 @@ CHIP_SEL_DISCOVER_SNAP = [0] # for the Discover SNAP spectrometer
 class LeuschFengine(SnapFengine):
     def __init__(self, host, ant_indices=None, logger=None, is_discover=False, 
                     transport='redis', redishost='redishost'):
-        SnapFengine.__init__(self, host, ant_indices=None, logger=None, 
+        super().__init__(self, host, ant_indices=None, logger=None, 
                                 transport='redis', redishost='redishost')
-        self.corr_0 = snap_blocks.Corr(self.fpga, 'corr_0')
-        self.corr_1 = snap_blocks.Corr(self.fpga, 'corr_1')
+        self.corr_0 = super().snap_blocks.Corr(self.fpga, 'corr_0')
+        self.corr_1 = super().snap_blocks.Corr(self.fpga, 'corr_1')
 
         # blocks initialized in this (significant) order
         self.blocks = [
@@ -49,7 +49,7 @@ class LeuschFengine(SnapFengine):
             #self.eth,
             self.corr_0,
             self.corr_1,
-            self.phase_switch,
+            self.phase_switch
         ]
 
         if is_discover:
