@@ -24,6 +24,7 @@ ACC_LEN = 38150
 SPEC_PER_ACC = 8
 CHIP_SEL_DISCOVER_SNAP = [0] # for the Discover SNAP spectrometer
 
+
 class LeuschFengine(SnapFengine):
     def __init__(self, host, ant_indices=None, logger=None, is_discover=False,
                  transport='redis', redishost='redishost'):
@@ -87,12 +88,10 @@ class LeuschFengine(SnapFengine):
         self.adc.set_gain(4)
 
 
-# Create Spectrometer class
 class Spectrometer:
     """
     Casperfpga interface to the SNAP spectrometer.
     """
-
     def __init__(self, 
                 host=HOST, 
                 fpgfile=FPGFILE, 
@@ -159,7 +158,7 @@ class Spectrometer:
             return False
 
   
-    def program(self):
+    def _program(self):
         """
         Program the fpga.
         """
@@ -175,7 +174,7 @@ class Spectrometer:
         logging.info('Initializing the spectrometer...')
         
         # Program fpga
-        self.program()
+        self._program()
 
         self.s.corr_0.set_acc_len(self.acc_len)
         self.s.corr_1.set_acc_len(self.acc_len)
@@ -266,7 +265,7 @@ class Spectrometer:
         return primaryhdu
 
 
-    def wait_for_cnt(self):
+    def _wait_for_cnt(self):
         """
         Waits for corr_0 acc_cnt to increase by 1. 
         Returns the count read from the register.
@@ -278,7 +277,7 @@ class Spectrometer:
         return cnt_0
 
 
-    def get_new_corr(self, corr, pol1, pol2):
+    def _get_new_corr(self, corr, pol1, pol2):
         """
         Reads and returns the spectra collected given a set of polarizations.
 
@@ -348,9 +347,9 @@ class Spectrometer:
         # Collect spectra
         logging.info('Reading %s spectra from the SNAP.' % str(nspec))
         for ninteg in self._progress_bar(nspec, progress):
-            cnt_0 = self.wait_for_cnt()
+            cnt_0 = self._wait_for_cnt()
             for name, corr, (stream_1, stream_2) in spectra: # read the spectra from both corrs
-                data[name] = self.get_new_corr(corr, stream_1, stream_2).real
+                data[name] = self._get_new_corr(corr, stream_1, stream_2).real
                 cnt_1 = self.s.corr_1.read_uint('acc_cnt')
                 assert cnt_0 + 1 == cnt_1 # assert corr_0's count increased and matches corr_1's count
 
