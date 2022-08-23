@@ -26,10 +26,10 @@ CHIP_SEL_DISCOVER_SNAP = [0] # for the Discover SNAP spectrometer
 
 
 class LeuschFengine(SnapFengine):
-    def __init__(self, host, ant_indices=None, logger=None, is_discover=False,
-                 transport='redis', redishost='redishost'):
-        SnapFengine.__init__(self, host, ant_indices=None, logger=None,
-                 transport='redis', redishost='redishost')
+    def __init__(self, host, ant_indices=None, logger=None, is_discover=False, 
+                    transport='redis', redishost='redishost'):
+        SnapFengine.__init__(self, host, ant_indices=None, logger=None, 
+                                transport='redis', redishost='redishost')
         self.corr_0 = snap_blocks.Corr(self.fpga, 'corr_0')
         self.corr_1 = snap_blocks.Corr(self.fpga, 'corr_1')
 
@@ -88,7 +88,7 @@ class LeuschFengine(SnapFengine):
         self.adc.set_gain(4)
 
 
-class Spectrometer:
+class Spectrometer(LeuschFengine):
     """
     Casperfpga interface to the SNAP spectrometer.
     """
@@ -110,12 +110,20 @@ class Spectrometer:
         - fpgfile: design file used to program fpga.
         - transport: communication protocal.
         - stream_1, stream_2: SNAP ports used for correlation data aquisition.
-        - logger: filename in which log is recorded. 
+        - logger: filename in which log is recorded.
+        - is_discover: boolean describing if the discover snap is being used.
+        - acc_len: accumulation length.
+        - spec_per_acc: number of spectra collected per accumulation
         """
         self.host = host
         self.fpgfile = fpgfile
         self.transport = transport
 
+        if is_discover:
+            self.snap = 'Discover'
+        elif not is_discover:
+            self.snap = 'NAN'
+        
         if logger is None:
             self.logger = LOGGER
         elif logger is not None:
@@ -240,13 +248,12 @@ class Spectrometer:
         # Save metadata of the system and spectrometer
         header['NSPEC'] = (nspec, 'Number of spectra collected')
         header['FPGFILE'] = (self.fpgfile, 'FPGA FPG file')
+        header['SNAP'] = (self.snap, 'SNAP board')
         header['HOST'] = (self.s.fpga.host, 'Host of the FPGA')
-        header['TRANSP'] = (self.transport, 'Communication protocal (transport)')
         header['ACCLEN'] = (self.acc_len, 'Number of clock cycles')
         header['SPEC/ACC'] = (self.spec_per_acc, 'Spectra per accumulation')
         header['STREAM_1'] = (self.stream_1, 'First ADC port used')
         header['STREAM_2'] = (self.stream_2, 'Second ADC port used')
-        #header['LOGGER'] = (self.logger, 'Logger file')
 
         header['PYTHON'] = (3.8, 'Python version')
         header['SRC'] = ('https://github.com/darbymccauley/Leuschner_Spectrometer.git', 'Source code')
