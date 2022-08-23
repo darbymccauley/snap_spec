@@ -300,6 +300,7 @@ class Discover_Spectrometer:
         
         # Initialize other blocks and both correlators
         try:
+            print(self.s.nchans)
             self.s.initialize()
         except UnicodeDecodeError: # XXX address this issue later with Aaron
             self.s.pfb.initialize()
