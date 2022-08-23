@@ -1,5 +1,6 @@
 import casperfpga
 from hera_corr_f import SnapFengine
+from hera_corr_f import blocks as snap_blocks
 import ugradio
 
 import numpy as np
@@ -27,11 +28,11 @@ CHIP_SEL_DISCOVER_SNAP = [0] # for the Discover SNAP spectrometer
 
 class LeuschFengine(SnapFengine):
     def __init__(self, host, ant_indices=None, logger=None, is_discover=False, 
-                    transport='redis', redishost='redishost'):
-        super().__init__(self, host, ant_indices=None, logger=None, 
-                                transport='redis', redishost='redishost')
-        self.corr_0 = super().snap_blocks.Corr(self.fpga, 'corr_0')
-        self.corr_1 = super().snap_blocks.Corr(self.fpga, 'corr_1')
+                    transport=TRANSPORT, redishost='redishost'):
+        super().__init__(host, ant_indices=None, logger=None, 
+                                transport=TRANSPORT, redishost='redishost')
+        self.corr_0 = snap_blocks.Corr(self.fpga, 'corr_0')
+        self.corr_1 = snap_blocks.Corr(self.fpga, 'corr_1')
 
         # blocks initialized in this (significant) order
         self.blocks = [
@@ -43,13 +44,13 @@ class LeuschFengine(SnapFengine):
             self.delay,
             self.pfb,
             self.eq,
-            # self.eq_tvg, # temporarily removed
-            #self.reorder,
-            #self.packetizer,
+            # self.eq_tvg, # temporarily removed // not needed for spec
+            #self.reorder, # not needed for spec
+            #self.packetizer, # not needed for spec
             #self.eth,
             self.corr_0,
             self.corr_1,
-            self.phase_switch
+            # self.phase_switch XXX katcp error -- address with Aaron
         ]
 
         if is_discover:
@@ -192,14 +193,9 @@ class Spectrometer(LeuschFengine):
             self.s.adc.init()
             self.s.align_adc()        
 
-        # Initialize other blocks and both correlators
+        # Initialize blocks
         self.s.initialize()
-        #try:
-        #    self.s.initialize()
-        #except UnicodeDecodeError: # XXX address this issue later with Aaron
-        #    self.s.pfb.initialize()
-        #    self.s.corr_0.initialize()
-        #    self.s.corr_1.initialize()
+        
         logging.info('Spectrometer initialized.')
 
 

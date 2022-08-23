@@ -1,0 +1,14 @@
+Metadata-Version: 2.1
+Name: leuschner
+Version: 0.0.0
+Summary: Leuschner radio spectrometer control software.
+Home-page: https://github.com/darbymccauley/Leuschner_Spectrometer
+Author: Darby McCauley
+Author-email: darbymccauley@berkeley.edu
+License: UNKNOWN
+Platform: UNKNOWN
+
+
+UC Berkeley Leuschner radio SNAP spectrometer control software.
+
+
