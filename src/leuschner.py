@@ -24,6 +24,9 @@ TRANSPORT = 'default'
 ACC_LEN = 38150
 SPEC_PER_ACC = 8
 CHIP_SEL_DISCOVER_SNAP = [0] # for the Discover SNAP spectrometer
+LEUSCH_LAT, LEUSCH_LON, LEUSCH_ALT = ugradio.leo.lat, ugradio.leo.lon, ugradio.leo.alt
+NCH_LAT, NCH_LON, NCH_ALT = ugradio.nch.lat, ugradio.nch.lon, ugradio.nch.alt
+
 
 
 class LeuschFengine(SnapFengine):
@@ -101,6 +104,7 @@ class Spectrometer(LeuschFengine):
                 stream_2=STREAM_2, 
                 logger=None, 
                 is_discover=False,
+                location='Leuschner', 
                 acc_len=ACC_LEN, 
                 spec_per_acc=SPEC_PER_ACC):
         """
@@ -113,12 +117,21 @@ class Spectrometer(LeuschFengine):
         - stream_1, stream_2: SNAP ports used for correlation data aquisition.
         - logger: filename in which log is recorded.
         - is_discover: boolean describing if the discover snap is being used.
+        - location: location of observation. Either 'Leuschner' or 'NCH' (New Campbell Hall).
+            (Default is 'Leuschner'.)
         - acc_len: accumulation length.
         - spec_per_acc: number of spectra collected per accumulation
         """
         self.host = host
         self.fpgfile = fpgfile
         self.transport = transport
+
+        self.location = location
+        if self.location == 'Leuschner':
+            self.LAT, self.LON, self.ALT = LEUSCH_LAT, LEUSCH_LON, LEUSCH_ALT
+        elif self.location == 'NCH':
+            self.LAT, self.LON, self.ALT = NCH_LAT, NCH_LON, NCH_ALT
+
 
         if is_discover:
             self.snap = 'Discover'
@@ -223,7 +236,7 @@ class Spectrometer(LeuschFengine):
         # Set times
         obs_start_unix = time.time() #unix time
         unix_object = Time(obs_start_unix, format='unix', 
-                           location=(ugradio.leo.lon, ugradio.leo.lat, ugradio.leo.alt)) #unix time Time object
+                           location=(self.LON, self.LAT, self.ALT)) #unix time Time object
         obs_start_jd = unix_object.jd #convert unix time to julian date
 
         # Set the coordinates
