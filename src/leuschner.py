@@ -144,7 +144,10 @@ class Spectrometer(LeuschFengine):
         self.fpga = casperfpga.CasperFpga(self.host)
         self.s = LeuschFengine(self.host, transport=self.transport, is_discover=is_discover)
 
-        
+        # start-up programming
+        self._program()
+
+
     def is_connected(self):
         """
         Check if the SNAP is connected.
@@ -181,16 +184,13 @@ class Spectrometer(LeuschFengine):
         Programs the fpga on the SNAP and initializes the spectrometer.
         """
         logging.info('Initializing the spectrometer...')
-        
-        # Program fpga
-        self._program()
 
         self.s.corr_0.set_acc_len(self.acc_len)
         self.s.corr_1.set_acc_len(self.acc_len)
         
         # Initialize and align ADCs
         while self.s.adc_is_configured() == 0:
-            self.s.adc.init()
+            self.s.adc.init() # will reprogram fpga
             self.s.align_adc()        
 
         # Initialize blocks
