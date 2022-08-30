@@ -1,7 +1,0 @@
-README.md
-setup.py
-src/leuschner.py
-src/leuschner.egg-info/PKG-INFO
-src/leuschner.egg-info/SOURCES.txt
-src/leuschner.egg-info/dependency_links.txt
-src/leuschner.egg-info/top_level.txt
