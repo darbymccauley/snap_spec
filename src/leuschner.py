@@ -208,6 +208,13 @@ class Spectrometer(LeuschFengine):
 
         # Initialize blocks
         self.s.initialize()
+
+        # Set FFT shift
+        self.s.pfb.set_fft_shift('0xfff')
+
+        # Set Eq. coeffs
+        for stream in [self.stream_1, self.stream_2]:
+            self.s.eq.set_coeffs(stream=stream, coeff=200)
         
         logging.info('Spectrometer initialized.')
 
