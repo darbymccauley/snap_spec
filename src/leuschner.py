@@ -213,8 +213,10 @@ class Spectrometer(LeuschFengine):
         self.s.pfb.set_fft_shift(0xfff)
 
         # Set Eq. coeffs
+        value = 200 # debug session with Aaron -- may need revision
+        cos = np.ones(self.s.eq.ncoeffs) * value
         for stream in [self.stream_1, self.stream_2]:
-            self.s.eq.set_coeffs(stream=stream, coeffs=200)
+            self.s.eq.set_coeffs(stream=stream, coeffs=cos)
         
         logging.info('Spectrometer initialized.')
 
