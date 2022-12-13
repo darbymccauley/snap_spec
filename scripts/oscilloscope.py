@@ -23,3 +23,4 @@ while True: # infinite loop
         line.set_ydata(data)
         fig.canvas.draw()
         fig.canvas.flush_events()
+
