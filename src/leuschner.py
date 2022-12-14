@@ -155,6 +155,7 @@ class Spectrometer(LeuschFengine):
         self.spec_per_acc = spec_per_acc
 
         self.fpga = casperfpga.CasperFpga(self.host)
+        self.fpga.upload_to_ram_and_program(self.fpgfile)
         self.s = LeuschFengine(self.host, transport=self.transport, is_discover=is_discover)
 
         # start-up programming
