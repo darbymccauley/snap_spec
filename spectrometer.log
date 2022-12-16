@@ -17,3 +17,6 @@
 12/14/2022 08:27:30 PM - WARNING - VerifyWarning: Card is too long, comment will be truncated.
 12/14/2022 08:28:50 PM - WARNING - VerifyWarning: Keyword name 'SPEC/ACC' is greater than 8 characters or contains characters not allowed by the FITS standard; a HIERARCH card will be created.
 12/14/2022 08:29:02 PM - WARNING - VerifyWarning: Card is too long, comment will be truncated.
+12/14/2022 10:56:19 PM - WARNING - VerifyWarning: Keyword name 'SPEC/ACC' is greater than 8 characters or contains characters not allowed by the FITS standard; a HIERARCH card will be created.
+12/14/2022 10:57:46 PM - WARNING - VerifyWarning: Keyword name 'SPEC/ACC' is greater than 8 characters or contains characters not allowed by the FITS standard; a HIERARCH card will be created.
+12/14/2022 11:02:57 PM - WARNING - VerifyWarning: Card is too long, comment will be truncated.
