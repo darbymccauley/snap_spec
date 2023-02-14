@@ -28,13 +28,40 @@ LEUSCH_LAT, LEUSCH_LON, LEUSCH_ALT = ugradio.leo.lat, ugradio.leo.lon, ugradio.l
 NCH_LAT, NCH_LON, NCH_ALT = ugradio.nch.lat, ugradio.nch.lon, ugradio.nch.alt
 
 
-
 class LeuschFengine(SnapFengine):
-    def __init__(self, host, ant_indices=None, logger=None, is_discover=False, 
-                    transport=TRANSPORT, redishost='redishost'):
+        """
+        Interface to the SNAP.
+
+        Arguments:
+        - host: IP address of SNAP.
+        - fpgfile: design file used to program fpga.
+        - stream_1, stream_2: SNAP ports used for correlation data.
+        - is_discover: bool describing if the discover snap is being used.
+        - acc_len: accumulation length.
+        - spec_per_acc: number of spectra collected per accumulation
+        """
+    def __init__(self,
+                 host=HOST,
+                 fpgfile=FPGFILE,
+                 is_discover=False,
+                 stream_1=STREAM_1, 
+                 stream_2=STREAM_2, 
+                 acc_len=ACC_LEN, 
+                 spec_per_acc=SPEC_PER_ACC):
         super().__init__(host, ant_indices=None, logger=None, 
-                                transport=TRANSPORT, redishost='redishost')
-        self.corr_0 = snap_blocks.Corr(self.fpga, 'corr_0')
+                         transport=TRANSPORT, redishost=None)
+
+        self.host = host
+        self.fpgfile = fpgfile
+        self.transport = TRANSPORT
+
+        # Ports used for ADCs
+        self.stream_1 = stream_1
+        self.stream_2 = stream_2
+        self.acc_len = acc_len
+        self.spec_per_acc = spec_per_acc
+
+        self.corr_0 = self.corr
         self.corr_1 = snap_blocks.Corr(self.fpga, 'corr_1')
 
         # blocks initialized in this (significant) order
@@ -61,11 +88,63 @@ class LeuschFengine(SnapFengine):
         else:
             self.chips = None
 
+    def program(self, progfile=None, force=False, verify-False, timeout=10):
+        """
+        Program the fpga.
+        """
+        if progfile is None:
+            progfile = self.fpgfile
+        super().program(progfile, force=force, verify=verify, timeout=timeout)
+
     def _add_i2c(self):
+        '''Bypasses initialization of HERA FEM/PAM which are not
+        in this system.'''
         self.i2c_initialized = True
+
+
+    def initialize(self, force=False, verify=False):
+        """
+        Programs the fpga on the SNAP and initializes the spectrometer.
+        """
+        logging.info('Initializing the spectrometer...')
+        super().initialize(force=force, verify=verify)
+
+        self.corr_0.set_acc_len(self.acc_len)
+        self.corr_1.set_acc_len(self.acc_len)
+        
+        # Set FFT shift
+        self.pfb.set_fft_shift(0xfff)
+
+        # Set Eq. coeffs
+        value = 160 # debug session with Aaron -- may need revision
+        cos = np.ones(self.eq.ncoeffs) * value
+        for stream in [self.stream_1, self.stream_2]:
+            self.eq.set_coeffs(stream=stream, coeffs=cos)
+        
+        logging.info('Spectrometer initialized.')
+
+    def startup(self, force=False, sample_rate=500.):
+        """
+        Do all programming, initialization, and synchronization.
+        """
+        if not self.is_programmed() or force:
+            self.program()
+            self.initialize_adc(sample_rate=sample_rate)
+            self.align_adc(force=force)
+        self.initialize()
+        self.synchronize()
+
+    def synchronize(self):
+        """
+        Synchronize DSP logic.
+        """
+        self.sync.set_delay(0)
+        self.sync.wait_for_sync()
+        self.arm_sync()
 
     def align_adc(self, chips=None, force=False, verify=True):
         """Align clock and data lanes of ADC."""
+        # XXX why repeat this code?
         if chips is None:
             chips = self.chips
         if force:
@@ -95,36 +174,32 @@ class LeuschFengine(SnapFengine):
 class Spectrometer(LeuschFengine):
     """
     Casperfpga interface to the SNAP spectrometer.
-    """
-    def __init__(self, 
-                host=HOST, 
-                fpgfile=FPGFILE, 
-                transport=TRANSPORT, 
-                stream_1=STREAM_1, 
-                stream_2=STREAM_2, 
-                logger=None, 
-                is_discover=False,
-                location='Leuschner', 
-                acc_len=ACC_LEN, 
-                spec_per_acc=SPEC_PER_ACC):
-        """
-        Create the interface to the SNAP.
+    Create the interface to the SNAP.
 
-        Inputs:
-        - host: IP address of SNAP.
-        - fpgfile: design file used to program fpga.
-        - transport: communication protocal.
-        - stream_1, stream_2: SNAP ports used for correlation data aquisition.
-        - logger: filename in which log is recorded.
-        - is_discover: boolean describing if the discover snap is being used.
-        - location: location of observation. Either 'Leuschner' or 'NCH' (New Campbell Hall).
-            (Default is 'Leuschner'.)
-        - acc_len: accumulation length.
-        - spec_per_acc: number of spectra collected per accumulation
-        """
-        self.host = host
-        self.fpgfile = fpgfile
-        self.transport = transport
+    Inputs:
+    - host: IP address of SNAP.
+    - fpgfile: design file used to program fpga.
+    - transport: communication protocal.
+    - stream_1, stream_2: SNAP ports used for correlation data aquisition.
+    - logger: filename in which log is recorded.
+    - is_discover: boolean describing if the discover snap is being used.
+    - location: location of observation. Either 'Leuschner' or 'NCH' (New Campbell Hall).
+        (Default is 'Leuschner'.)
+    - acc_len: accumulation length.
+    - spec_per_acc: number of spectra collected per accumulation
+    """
+    def __init__(self,
+                 host=HOST,
+                 fpgfile=FPGFILE,
+                 is_discover=False,
+                 stream_1=STREAM_1, 
+                 stream_2=STREAM_2, 
+                 acc_len=ACC_LEN, 
+                 spec_per_acc=SPEC_PER_ACC,
+                 location='Leuschner'):
+        super().__init__(host, fpgfile=fpgfile, is_discover=is_discover,
+                         stream_1=stream_1, stream_2=stream_2,
+                         acc_len=acc_len, spec_per_acc=spec_per_acc)
 
         self.location = location
         if self.location == 'Leuschner':
@@ -138,90 +213,6 @@ class Spectrometer(LeuschFengine):
         elif not is_discover:
             self.snap = 'NAN'
         
-        if logger is None:
-            self.logger = LOGGER
-        elif logger is not None:
-            self.logger = logger
-        logging.basicConfig(filename=self.logger, 
-                            format='%(asctime)s - %(levelname)s - %(message)s', 
-                            datefmt='%m/%d/%Y %I:%M:%S %p',
-                            level=logging.WARNING)
-
-        # Ports used for ADCs
-        self.stream_1 = stream_1
-        self.stream_2 = stream_2
-        
-        self.acc_len = acc_len
-        self.spec_per_acc = spec_per_acc
-
-        self.fpga = casperfpga.CasperFpga(self.host)
-        self.fpga.upload_to_ram_and_program(self.fpgfile)
-        self.s = LeuschFengine(self.host, transport=self.transport, is_discover=is_discover)
-
-        # start-up programming
-        self._program()
-
-
-    def is_connected(self):
-        """
-        Check if the SNAP is connected.
-        """
-        if self.fpga.is_connected():
-            return True
-        else:
-            logging.warning('SNAP is not connected')
-            return False
-
-
-    def is_running(self):
-        """
-        Check if the fpga has been programmed and is running.
-        """
-        if self.fpga.is_running() and self.s.is_programmed():
-            return True
-        else:
-            logging.warning('SNAP is not programmed and running.')
-            return False
-
-  
-    def _program(self):
-        """
-        Program the fpga.
-        """
-        self.fpga.upload_to_ram_and_program(self.fpgfile)
-        self.s.fpga.upload_to_ram_and_program(self.fpgfile)
-        logging.info('FPGA programmed.')
-
- 
-    def initialize(self):
-        """
-        Programs the fpga on the SNAP and initializes the spectrometer.
-        """
-        logging.info('Initializing the spectrometer...')
-
-        self.s.corr_0.set_acc_len(self.acc_len)
-        self.s.corr_1.set_acc_len(self.acc_len)
-        
-        # Initialize and align ADCs
-        while self.s.adc_is_configured() == 0:
-            self.s.adc.init() # will reprogram fpga
-            self.s.align_adc()        
-
-        # Initialize blocks
-        self.s.initialize()
-
-        # Set FFT shift
-        self.s.pfb.set_fft_shift(0xfff)
-
-        # Set Eq. coeffs
-        value = 200 # debug session with Aaron -- may need revision
-        cos = np.ones(self.s.eq.ncoeffs) * value
-        for stream in [self.stream_1, self.stream_2]:
-            self.s.eq.set_coeffs(stream=stream, coeffs=cos)
-        
-        logging.info('Spectrometer initialized.')
-
-
     def make_PrimaryHDU(self, nspec, coords, coord_sys='ga'):
         """
         Make the PrimaryHDU of the FITS file. Serves as the header 
@@ -297,8 +288,8 @@ class Spectrometer(LeuschFengine):
         Returns the count read from the register.
         (Sourced with modifications from hera_corr_f.)
         """
-        cnt_0 = self.s.corr_0.read_uint('acc_cnt')
-        while self.s.corr_0.read_uint('acc_cnt') < (cnt_0+1):
+        cnt_0 = self.corr_0.read_uint('acc_cnt')
+        while self.corr_0.read_uint('acc_cnt') < (cnt_0+1):
             time.sleep(0.1)
         return cnt_0
 
@@ -366,8 +357,8 @@ class Spectrometer(LeuschFengine):
         hdulist = fits.HDUList(hdus=[primaryhdu])
 
         # Define spectra to collect
-        spectra = [('auto0_real', self.s.corr_0, (self.stream_1, self.stream_1)), # (0, 0)
-                   ('auto1_real', self.s.corr_1, (self.stream_2, self.stream_2))] # (1, 1)
+        spectra = [('auto0_real', self.corr_0, (self.stream_1, self.stream_1)), # (0, 0)
+                   ('auto1_real', self.corr_1, (self.stream_2, self.stream_2))] # (1, 1)
         data = {}
         
         # Collect spectra
@@ -376,7 +367,7 @@ class Spectrometer(LeuschFengine):
             cnt_0 = self._wait_for_cnt()
             for name, corr, (stream_1, stream_2) in spectra: # read the spectra from both corrs
                 data[name] = self._get_new_corr(corr, stream_1, stream_2).real
-            cnt_1 = self.s.corr_1.read_uint('acc_cnt')
+            cnt_1 = self.corr_1.read_uint('acc_cnt')
             assert cnt_0 + 1 == cnt_1 # assert corr_0's count increased and matches corr_1's count
 
             # Make BinTableHDU and append collected data
@@ -423,7 +414,7 @@ class Spectrometer(LeuschFengine):
         for ninteg in self._progress_bar(nspec, progress):
             data_list = []
             for name, (stream_1, stream_2) in spectra:
-                cross = self.s.corr_0.get_new_corr(stream_1, stream_2)
+                cross = self.corr_0.get_new_corr(stream_1, stream_2)
                 cross_real, cross_imag = cross.real, cross.imag
             data_list.append(fits.Column(name=name+'_real', format='D', array=cross_real))
             data_list.append(fits.Column(name=name+'_imag', format='D', array=cross_imag))
