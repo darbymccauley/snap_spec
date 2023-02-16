@@ -29,17 +29,17 @@ NCH_LAT, NCH_LON, NCH_ALT = ugradio.nch.lat, ugradio.nch.lon, ugradio.nch.alt
 
 
 class LeuschFengine(SnapFengine):
-        """
-        Interface to the SNAP.
+    """
+    Interface to the SNAP.
 
-        Arguments:
-        - host: IP address of SNAP.
-        - fpgfile: design file used to program fpga.
-        - stream_1, stream_2: SNAP ports used for correlation data.
-        - is_discover: bool describing if the discover snap is being used.
-        - acc_len: accumulation length.
-        - spec_per_acc: number of spectra collected per accumulation
-        """
+    Arguments:
+    - host: IP address of SNAP.
+    - fpgfile: design file used to program fpga.
+    - stream_1, stream_2: SNAP ports used for correlation data.
+    - is_discover: bool describing if the discover snap is being used.
+    - acc_len: accumulation length.
+    - spec_per_acc: number of spectra collected per accumulation
+    """
     def __init__(self,
                  host=HOST,
                  fpgfile=FPGFILE,
@@ -88,7 +88,7 @@ class LeuschFengine(SnapFengine):
         else:
             self.chips = None
 
-    def program(self, progfile=None, force=False, verify-False, timeout=10):
+    def program(self, progfile=None, force=False, verify=False, timeout=10):
         """
         Program the fpga.
         """
@@ -140,7 +140,7 @@ class LeuschFengine(SnapFengine):
         """
         self.sync.set_delay(0)
         self.sync.wait_for_sync()
-        self.arm_sync()
+        self.sync.arm_sync()
 
     def align_adc(self, chips=None, force=False, verify=True):
         """Align clock and data lanes of ADC."""
