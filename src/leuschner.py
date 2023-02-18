@@ -88,6 +88,8 @@ class LeuschFengine(SnapFengine):
         else:
             self.chips = None
 
+        # super().program(progrile=self.fpgfile, force=True)
+
     def program(self, progfile=None, force=False, verify=False, timeout=10):
         """
         Program the fpga.
@@ -196,7 +198,7 @@ class Spectrometer(LeuschFengine):
                  stream_2=STREAM_2, 
                  acc_len=ACC_LEN, 
                  spec_per_acc=SPEC_PER_ACC,
-                 location='Leuschner'):
+                 location='NCH'):
         super().__init__(host, fpgfile=fpgfile, is_discover=is_discover,
                          stream_1=stream_1, stream_2=stream_2,
                          acc_len=acc_len, spec_per_acc=spec_per_acc)
@@ -207,12 +209,13 @@ class Spectrometer(LeuschFengine):
         elif self.location == 'NCH':
             self.LAT, self.LON, self.ALT = NCH_LAT, NCH_LON, NCH_ALT
 
-
         if is_discover:
             self.snap = 'Discover'
         elif not is_discover:
             self.snap = 'NAN'
         
+        self.fpga.upload_to_ram_and_program(fpgfile)        
+
     def make_PrimaryHDU(self, nspec, coords, coord_sys='ga'):
         """
         Make the PrimaryHDU of the FITS file. Serves as the header 
