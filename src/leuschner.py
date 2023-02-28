@@ -24,8 +24,6 @@ TRANSPORT = 'default'
 ACC_LEN = 38150
 SPEC_PER_ACC = 8
 CHIP_SEL_DISCOVER_SNAP = [0] # for the Discover SNAP spectrometer
-LEUSCH_LAT, LEUSCH_LON, LEUSCH_ALT = ugradio.leo.lat, ugradio.leo.lon, ugradio.leo.alt
-NCH_LAT, NCH_LON, NCH_ALT = ugradio.nch.lat, ugradio.nch.lon, ugradio.nch.alt
 
 
 class LeuschFengine(SnapFengine):
@@ -93,6 +91,7 @@ class LeuschFengine(SnapFengine):
     def program(self, progfile=None, force=False, verify=False, timeout=10):
         """
         Program the fpga.
+        Called by self.startup()
         """
         if progfile is None:
             progfile = self.fpgfile
@@ -107,6 +106,7 @@ class LeuschFengine(SnapFengine):
     def initialize(self, force=False, verify=False):
         """
         Programs the fpga on the SNAP and initializes the spectrometer.
+        Called by self.startup()
         """
         logging.info('Initializing the spectrometer...')
         super().initialize(force=force, verify=verify)
@@ -125,7 +125,7 @@ class LeuschFengine(SnapFengine):
         
         logging.info('Spectrometer initialized.')
 
-    def startup(self, force=False, sample_rate=500.):
+    def startup(self, mode='spec', force=False, sample_rate=500.):
         """
         Do all programming, initialization, and synchronization.
         """
@@ -135,17 +135,22 @@ class LeuschFengine(SnapFengine):
             self.align_adc(force=force)
         self.initialize()
         self.synchronize()
+        self.set_spec_corr_mode(mode=mode)
 
     def synchronize(self):
         """
         Synchronize DSP logic.
+        Called by self.startup()
         """
         self.sync.set_delay(0)
         self.sync.wait_for_sync()
         self.sync.arm_sync()
 
     def align_adc(self, chips=None, force=False, verify=True):
-        """Align clock and data lanes of ADC."""
+        """
+        Align clock and data lanes of ADC.
+        Called by self.startup()
+        """
         # XXX why repeat this code?
         if chips is None:
             chips = self.chips
@@ -171,6 +176,50 @@ class LeuschFengine(SnapFengine):
         self.adc.selectADC()
         self.adc.adc.selectInput([1, 1, 3, 3]) 
         self.adc.set_gain(4)
+
+
+    def set_spec_corr_mode(self, mode='spec'):
+        assert mode in ('spec', 'corr')
+        self.mode = mode
+        if mode == 'spec':
+            # Define spectra to collect
+            self.corr_0.set_input(self.stream_1, self.stream_1)  # (0, 0)
+            self.corr_1.set_input(self.stream_2, self.stream_2)  # (1, 1)
+        else:  # corr mode
+            self.corr_0.set_input(self.stream_1, self.stream_2)  # (0, 1)
+            # corr_1 unused
+
+    def read_data(self, prev_cnt=None):
+        """
+        Read auto/cross spectra, based on mode set in set_spec_corr_mode.
+        Arguments:
+            prev_cnt [int]: previous acc_cnt. If provided, wait for current
+                            acc_cnt to advance past prev_cnt before proceeding.
+        Returns:
+            rv [dict]: dict of spectra (auto0/1 or corr01), along with acc_cnt
+                       time of data acquisition.
+        """
+        acc_cnt = self.corr_0.read_uint('acc_cnt')
+        if prev_cnt != None:
+            while acc_cnt == prev_cnt:
+                time.sleep(DELAY_TIME)
+                acc_cnt = self.corr_0.read_uint('acc_cnt')
+            assert acc_cnt == prev_cnt + 1  # errors if missed an integration
+        t = time.time()
+        spec0 = self.corr_0.read_bram(flush_vacc=False) / float(self.acc_len * self.spec_per_acc)
+        if self.mode == 'spec':
+            spec1 = self.corr_1.read_bram(flush_vacc=False) / float(self.acc_len * self.spec_per_acc)
+            assert self.corr_1.read_uint('acc_cnt') == acc_cnt  # error if integration advances mid read
+            rv = {'auto0': spec0.real, 'auto1': spec1.real}
+        else:  # corr mode
+            assert self.corr_0.read_uint('acc_cnt') == acc_cnt  # error if integration advances mid read
+            rv = {'corr01': spec0}
+        rv.update({'acc_cnt': acc_cnt, 'time': t})
+        return rv
+        
+
+LEUSCH_LAT, LEUSCH_LON, LEUSCH_ALT = ugradio.leo.lat, ugradio.leo.lon, ugradio.leo.alt
+NCH_LAT, NCH_LON, NCH_ALT = ugradio.nch.lat, ugradio.nch.lon, ugradio.nch.alt
 
 
 class Spectrometer(LeuschFengine):
@@ -292,8 +341,8 @@ class Spectrometer(LeuschFengine):
         (Sourced with modifications from hera_corr_f.)
         """
         cnt_0 = self.corr_0.read_uint('acc_cnt')
-        while self.corr_0.read_uint('acc_cnt') < (cnt_0+1):
-            time.sleep(0.1)
+        while self.corr_0.read_uint('acc_cnt') < cnt_0 + 1:
+            time.sleep(DELAY_TIME)
         return cnt_0
 
 
@@ -311,9 +360,9 @@ class Spectrometer(LeuschFengine):
         (Sourced with modifications from hera_corr_f.)
         """
         corr.set_input(pol1, pol2)
-        spec = corr.read_bram(flush_vacc=False)/float(self.acc_len*self.spec_per_acc)
+        spec = corr.read_bram(flush_vacc=False) / float(self.acc_len * self.spec_per_acc)
         if pol1 == pol2:
-            return spec.real + 1j*np.zeros(len(spec))
+            return spec.real + 1j * np.zeros(len(spec))
         else:
             return spec
 
