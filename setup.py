@@ -15,6 +15,5 @@ if __name__ == '__main__':
         packages = ['snap_spec'],
         package_dir = {'snap_spec':'src'},
         package_data = {'snap_spec': ['fpga/ugradio_corrspec_2022-02-22_0905.fpg']},
-        py_modules = ['leuschner'],
         scripts = glob.glob('scipts/*.py')
     )  
