@@ -49,7 +49,7 @@ class UGRadioSnap(SnapFengine):
         try:
             super().__init__(host, ant_indices=None, logger=None, 
                              transport=TRANSPORT, redishost=None)
-        except:  # XXX figure out specific error to catch
+        except casperfpga.transport_katcp.KatcpRequestFail:
             fpga = casperfpga.CasperFpga(host)
             fpga.upload_to_ram_and_program(fpgfile)
             super().__init__(host, ant_indices=None, logger=None, 
@@ -137,14 +137,19 @@ class UGRadioSnap(SnapFengine):
         logging.info('Spectrometer initialized.')
 
 
-    def synchronize(self):
+    def synchronize(self, manual=True):
         """
         Synchronize DSP logic.
         Called by self.startup()
         """
         self.sync.set_delay(0)
-        self.sync.wait_for_sync()
-        self.sync.arm_sync()
+        if manual:
+            self.sync.arm_sync()
+            for i in range(3):
+                self.sync.sw_sync()
+        else:
+            self.sync.wait_for_sync()
+            self.sync.arm_sync()
 
 
     def align_adc(self, chips=None, force=False, verify=True):
