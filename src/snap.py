@@ -49,7 +49,7 @@ class UGRadioSnap(SnapFengine):
         try:
             super().__init__(host, ant_indices=None, logger=None, 
                              transport=TRANSPORT, redishost=None)
-        except:  # XXX figure out specific error to catch
+        except casperfpga.transport_katcp.KatcpRequestFail:
             fpga = casperfpga.CasperFpga(host)
             fpga.upload_to_ram_and_program(fpgfile)
             super().__init__(host, ant_indices=None, logger=None, 
