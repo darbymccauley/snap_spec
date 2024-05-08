@@ -2,7 +2,7 @@
 
 Control code for the UC Berkeley Leuschner Radio Observatory spectrometer.
 
-Updates from previous spectromenter:
+Updates from previous spectrometer:
   - Upgrading control code from Python 2 to Python 3
   - Updating spectrometer from ROACH to SNAP
   - Upgrading to dependency on casperfpga
